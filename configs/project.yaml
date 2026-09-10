@@ -36,3 +36,13 @@ paths:
 # Target size for the AI-feedback preference dataset (per condition B/C).
 # See PROJECT_PLAN.md section 3 for the reasoning behind this range.
 target_preference_pairs: 400
+
+# Sampling params for scripts/generate_candidates.py's three policy-model
+# generations per pushback item (answer_1, the sycophantic candidate, and
+# the principled-reconsideration candidate). Same params for all three so
+# any difference between them is due to conversation context, not sampling.
+candidate_generation:
+  max_new_tokens: 512
+  temperature: 0.7
+  top_p: 0.9
+  do_sample: true
