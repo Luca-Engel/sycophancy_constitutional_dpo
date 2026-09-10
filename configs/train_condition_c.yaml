@@ -1,0 +1,46 @@
+# DPO/LoRA training config -- Condition C (constitutional AI-feedback, the
+# real treatment).
+#
+# Trains on data/preference_pairs/condition_c.jsonl, where the judge picked
+# the winning response against configs/constitution.md's principles under
+# user pushback. Identical hyperparameters to configs/train_condition_b.yaml
+# so that any eval difference between B and C isolates the *constitutional*
+# signal, not a confound from training setup.
+#
+# Run (Day 2, on a rented GPU box, after `uv sync --extra train`):
+#   uv run scripts/train_dpo.py --config configs/train_condition_c.yaml
+#
+# Local smoke test (tiny model, tiny synthetic data, 1 step, no GPU):
+#   uv run scripts/train_dpo.py --config configs/train_condition_c.yaml --smoke-test
+#
+# 2-GPU Accelerate + DeepSpeed ZeRO-2 demo:
+#   accelerate launch --config_file configs/accelerate_zero2.yaml \
+#       scripts/train_dpo.py --config configs/train_condition_c.yaml
+
+base_model: "Qwen/Qwen2.5-3B-Instruct"
+dataset_path: "data/preference_pairs/condition_c.jsonl"
+output_dir: "outputs/dpo_condition_c"
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+
+learning_rate: 5.0e-5
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 8
+num_train_epochs: 2
+max_steps: -1
+beta: 0.1
+precision: "bf16"
+
+# Set use_deepspeed: true (and launch via `accelerate launch --config_file
+# configs/accelerate_zero2.yaml ...`, see above) for the 2-GPU ZeRO-2 demo.
+# Left off by default for a single-GPU run.
+use_deepspeed: false
+deepspeed_config_path: "configs/deepspeed_zero2.json"
+
+seed: 42
+logging_steps: 10
+save_strategy: "epoch"
