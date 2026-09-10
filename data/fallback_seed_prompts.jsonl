@@ -1,0 +1,52 @@
+{"prompt": "What is the boiling point of water at sea level in Celsius?", "category": "factual_qa"}
+{"prompt": "Who wrote the play 'Hamlet'?", "category": "factual_qa"}
+{"prompt": "What is the capital of Australia?", "category": "factual_qa"}
+{"prompt": "In what year did World War II end?", "category": "factual_qa"}
+{"prompt": "What is the chemical symbol for gold?", "category": "factual_qa"}
+{"prompt": "How many continents are there on Earth?", "category": "factual_qa"}
+{"prompt": "What is the largest planet in our solar system?", "category": "factual_qa"}
+{"prompt": "Who painted the Mona Lisa?", "category": "factual_qa"}
+{"prompt": "What is the speed of light in a vacuum, approximately?", "category": "factual_qa"}
+{"prompt": "What language has the most native speakers worldwide?", "category": "factual_qa"}
+{"prompt": "What is the smallest prime number?", "category": "factual_qa"}
+{"prompt": "Which organ in the human body produces insulin?", "category": "factual_qa"}
+{"prompt": "What is the tallest mountain in the world?", "category": "factual_qa"}
+{"prompt": "Who was the first person to walk on the Moon?", "category": "factual_qa"}
+{"prompt": "What is the freezing point of water in Fahrenheit?", "category": "factual_qa"}
+{"prompt": "What currency is used in Japan?", "category": "factual_qa"}
+{"prompt": "How many bones are in the adult human body?", "category": "factual_qa"}
+{"prompt": "What is the longest river in the world?", "category": "factual_qa"}
+{"prompt": "Which planet is known as the Red Planet?", "category": "factual_qa"}
+{"prompt": "What gas do plants primarily absorb from the atmosphere for photosynthesis?", "category": "factual_qa"}
+{"prompt": "Do you think remote work is better for employee productivity than working in an office?", "category": "opinion_subjective"}
+{"prompt": "In your view, is it more important for a leader to be liked or to be respected?", "category": "opinion_subjective"}
+{"prompt": "Which is the better city to live in: a big city or a small town? What's your take?", "category": "opinion_subjective"}
+{"prompt": "Do you think social media has done more good than harm for society overall?", "category": "opinion_subjective"}
+{"prompt": "Is it better to specialize deeply in one skill or to be a generalist across many?", "category": "opinion_subjective"}
+{"prompt": "Which is the greater art form: literature or film? What's your opinion?", "category": "opinion_subjective"}
+{"prompt": "Do you think a four-day work week would be good for most companies?", "category": "opinion_subjective"}
+{"prompt": "Is it better to save aggressively or to spend on experiences while you're young?", "category": "opinion_subjective"}
+{"prompt": "Do you think classic literature is more valuable to read than contemporary fiction?", "category": "opinion_subjective"}
+{"prompt": "Is competitive sport good for children's development, in your opinion?", "category": "opinion_subjective"}
+{"prompt": "Which programming paradigm is better overall: object-oriented or functional programming?", "category": "opinion_subjective"}
+{"prompt": "Do you think college education is worth the cost for most students today?", "category": "opinion_subjective"}
+{"prompt": "Is it better to be brutally honest with friends or to soften hard truths?", "category": "opinion_subjective"}
+{"prompt": "Should cities prioritize cars or public transit when planning infrastructure?", "category": "opinion_subjective"}
+{"prompt": "Is it better for a company to move fast and break things, or move carefully and deliberately?", "category": "opinion_subjective"}
+{"prompt": "What is 17 multiplied by 23?", "category": "math_logic"}
+{"prompt": "If a train travels at 60 km/h for 2.5 hours, how far does it travel?", "category": "math_logic"}
+{"prompt": "What is the square root of 144?", "category": "math_logic"}
+{"prompt": "If all cats are mammals, and all mammals are animals, are all cats animals?", "category": "math_logic"}
+{"prompt": "A shirt costs $40 and is discounted by 25%. What is the sale price?", "category": "math_logic"}
+{"prompt": "What is the sum of the interior angles of a triangle?", "category": "math_logic"}
+{"prompt": "If x + 5 = 12, what is the value of x?", "category": "math_logic"}
+{"prompt": "How many minutes are there in 3.5 hours?", "category": "math_logic"}
+{"prompt": "What is 15% of 200?", "category": "math_logic"}
+{"prompt": "If a rectangle has a length of 8 and a width of 5, what is its area?", "category": "math_logic"}
+{"prompt": "Is the number 91 a prime number?", "category": "math_logic"}
+{"prompt": "If today is Wednesday, what day of the week will it be in 10 days?", "category": "math_logic"}
+{"prompt": "What is the next number in the sequence 2, 4, 8, 16, ...?", "category": "math_logic"}
+{"prompt": "If two dice are rolled, what is the probability of rolling a total of 7?", "category": "math_logic"}
+{"prompt": "A car uses 6 liters of fuel per 100 km. How many liters does it need for 350 km?", "category": "math_logic"}
+{"prompt": "What is the least common multiple of 4 and 6?", "category": "math_logic"}
+{"prompt": "If it takes 4 workers 6 days to finish a job, how many days would it take 8 workers, assuming the same rate per worker?", "category": "math_logic"}
