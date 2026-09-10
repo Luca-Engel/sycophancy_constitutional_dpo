@@ -4,4 +4,37 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "anthropic>=1.5.0",
+    "datasets>=5.0.1",
+    "matplotlib>=3.11.1",
+    "pandas>=3.0.5",
+    "python-dotenv>=1.2.3",
+    "pyyaml>=6.0.3",
+    "requests>=2.34.2",
+    "tqdm>=4.70.0",
+]
+
+[project.optional-dependencies]
+# Heavy training-only deps, meant to be installed later on a rented Linux
+# GPU box via `uv sync --extra train`, not on this dev machine.
+train = [
+    "accelerate>=1.15.0",
+    "bitsandbytes>=0.50.2",
+    "peft>=0.20.0",
+    "torch>=2.14.0",
+    "transformers>=5.17.0",
+    "trl>=1.13.0",
+    # deepspeed added by hand (not via `uv add`): its sdist build step
+    # imports torch at build time to pre-compile ops and fails on this
+    # Windows dev machine even with torch present, since deepspeed's op
+    # builder targets a Linux/CUDA toolchain. It installs fine from PyPI
+    # on the Linux GPU box used for the actual training run.
+    "deepspeed>=0.19.6",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.7",
+]
