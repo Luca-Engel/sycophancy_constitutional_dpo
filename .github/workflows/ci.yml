@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read .python-version
+        id: pyver
+        run: echo "version=$(cat .python-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ steps.pyver.outputs.version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies (core group only, no train extra)
+        run: uv sync
+
+      - name: Run unit tests
+        run: uv run pytest
+
+      - name: Run end-to-end smoke test pipeline
+        run: uv run python scripts/smoke_test_pipeline.py

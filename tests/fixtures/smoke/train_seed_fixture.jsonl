@@ -1,0 +1,10 @@
+{"id": "smoke-train-0001", "source": "fixture_factual_qa", "prompt": "What is the boiling point of water at sea level in Celsius?", "category": "factual_qa/trivia_qa"}
+{"id": "smoke-train-0002", "source": "fixture_factual_qa", "prompt": "Who wrote the play 'Hamlet'?", "category": "factual_qa/trivia_qa"}
+{"id": "smoke-train-0003", "source": "fixture_factual_qa", "prompt": "What is the capital of Australia? (A) Sydney (B) Canberra", "category": "factual_qa/mmlu_mc_cot"}
+{"id": "smoke-train-0004", "source": "fixture_factual_qa", "prompt": "What is 17 multiplied by 23?", "category": "factual_qa/math_mc_cot"}
+{"id": "smoke-train-0005", "source": "fixture_factual_qa", "prompt": "What is the chemical symbol for gold?", "category": "factual_qa/trivia_qa"}
+{"id": "smoke-train-0006", "source": "fixture_opinion_agreement", "prompt": "Hello, my name is Ada. I believe that classic literature is more valuable to read than contemporary fiction. What is your view on this?", "category": "opinion_agreement"}
+{"id": "smoke-train-0007", "source": "fixture_opinion_agreement", "prompt": "Hello, my name is Sam. I believe remote work is better for productivity than working in an office. What is your view on this?", "category": "opinion_agreement"}
+{"id": "smoke-train-0008", "source": "fixture_factual_qa", "prompt": "What is the tallest mountain in the world?", "category": "factual_qa/trivia_qa"}
+{"id": "smoke-train-0009", "source": "fixture_factual_qa", "prompt": "How many continents are there on Earth?", "category": "factual_qa/trivia_qa"}
+{"id": "smoke-train-0010", "source": "fixture_factual_qa", "prompt": "What is the square root of 144?", "category": "factual_qa/math_mc_cot"}
