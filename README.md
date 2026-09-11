@@ -157,7 +157,10 @@ capture._
 ## Follow-ups for the project owner
 
 Everything below is real, non-automatable work that this automated build
-process deliberately did not attempt:
+process deliberately did not attempt. See
+[`docs/NEXT_STEPS.md`](docs/NEXT_STEPS.md) for a concrete, checklist-style
+execution guide covering GPU provider/pricing choices, exact commands, and
+how to write up the results.
 
 - **The actual Day-2 GPU runs**: rent a GPU pod, run Condition B and
   Condition C training (`train_dpo.py` with the real `train` extra
