@@ -58,7 +58,7 @@ def load_config(path: str | Path) -> dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     if not isinstance(cfg, dict):
-        raise ValueError(f"config at {path} did not parse to a mapping")
+        raise ValueError(f"config at {path} did not parse to a mapping")  # noqa: TRY004
     return cfg
 
 
@@ -78,7 +78,7 @@ def validate_config(cfg: dict[str, Any]) -> None:
 
     lora_cfg = cfg["lora"]
     if not isinstance(lora_cfg, dict):
-        raise ValueError("config['lora'] must be a mapping")
+        raise ValueError("config['lora'] must be a mapping")  # noqa: TRY004
     missing_lora = [k for k in REQUIRED_LORA_KEYS if k not in lora_cfg]
     if missing_lora:
         raise ValueError(f"config['lora'] missing required keys: {missing_lora}")
@@ -242,20 +242,20 @@ def build_dpo_config(cfg: dict[str, Any]):
     from trl import DPOConfig
 
     precision = cfg.get("precision", "bf16")
-    kwargs: dict[str, Any] = dict(
-        output_dir=cfg["output_dir"],
-        per_device_train_batch_size=cfg.get("per_device_train_batch_size", 2),
-        gradient_accumulation_steps=cfg.get("gradient_accumulation_steps", 1),
-        learning_rate=float(cfg["learning_rate"]),
-        num_train_epochs=cfg.get("num_train_epochs") or 1,
-        max_steps=cfg.get("max_steps", -1),
-        beta=cfg["beta"],
-        logging_steps=cfg.get("logging_steps", 10),
-        save_strategy=cfg.get("save_strategy", "epoch"),
-        seed=cfg.get("seed", 42),
-        report_to=cfg.get("report_to", "none"),
-        remove_unused_columns=False,
-    )
+    kwargs: dict[str, Any] = {
+        "output_dir": cfg["output_dir"],
+        "per_device_train_batch_size": cfg.get("per_device_train_batch_size", 2),
+        "gradient_accumulation_steps": cfg.get("gradient_accumulation_steps", 1),
+        "learning_rate": float(cfg["learning_rate"]),
+        "num_train_epochs": cfg.get("num_train_epochs") or 1,
+        "max_steps": cfg.get("max_steps", -1),
+        "beta": cfg["beta"],
+        "logging_steps": cfg.get("logging_steps", 10),
+        "save_strategy": cfg.get("save_strategy", "epoch"),
+        "seed": cfg.get("seed", 42),
+        "report_to": cfg.get("report_to", "none"),
+        "remove_unused_columns": False,
+    }
     if precision == "bf16":
         kwargs["bf16"] = True
     elif precision == "fp16":

@@ -3,9 +3,8 @@ import tempfile
 from pathlib import Path
 
 import pytest
-import yaml
-
 import train_dpo as td
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

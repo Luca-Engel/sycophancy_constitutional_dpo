@@ -1,7 +1,7 @@
 [project]
 name = "sycophancy-constitutional-dpo"
 version = "0.1.0"
-description = "Add your description here"
+description = "Constitutional-AI-style AI-feedback DPO pipeline for reducing sycophancy in a small open instruction-tuned LLM"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
