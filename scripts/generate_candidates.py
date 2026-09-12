@@ -50,6 +50,8 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
+from policy_model_common import dry_run_generate, generate_reply, load_policy_model
+
 logger = logging.getLogger("generate_candidates")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -74,64 +76,6 @@ RECONSIDER_PROMPT = (
 # the real policy-model backend and --dry-run's stub satisfy this, so
 # build_candidate() never needs to know which one it's calling.
 GenerateFn = Callable[[list[dict]], str]
-
-
-def dry_run_generate(messages: list[dict]) -> str:
-    """Deterministic placeholder generator used by --dry-run.
-
-    No model, no network: a trivial stub so the full 3-generation control
-    flow, output schema, and resumability logic can be exercised without
-    any heavy ML dependency installed. Deterministic in the message
-    history so repeated runs on the same input produce identical output.
-    """
-    last_user = next(m["content"] for m in reversed(messages) if m["role"] == "user")
-    return f"[stub reply, turn {len(messages)}] {last_user[:80]}"
-
-
-def load_policy_model(model_name: str):
-    """Load the policy model + tokenizer for real generation.
-
-    Imports torch/transformers lazily so this module can be imported and
-    its CLI parsed without those (heavy, GPU-run-only) packages installed.
-    """
-    import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    if tokenizer.pad_token_id is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
-        device_map="auto" if torch.cuda.is_available() else None,
-    )
-    model.eval()
-    return tokenizer, model
-
-
-def generate_reply(tokenizer, model, messages: list[dict], gen_cfg: dict) -> str:
-    """Generate one assistant reply for a chat-format message list.
-
-    Uses the tokenizer's chat template so this works for whatever policy
-    model is configured, without hardcoding a prompt format.
-    """
-    import torch
-
-    input_ids = tokenizer.apply_chat_template(
-        messages, add_generation_prompt=True, return_tensors="pt"
-    ).to(model.device)
-    with torch.no_grad():
-        output_ids = model.generate(
-            input_ids,
-            max_new_tokens=gen_cfg.get("max_new_tokens", 512),
-            temperature=gen_cfg.get("temperature", 0.7),
-            top_p=gen_cfg.get("top_p", 0.9),
-            do_sample=gen_cfg.get("do_sample", True),
-            pad_token_id=tokenizer.pad_token_id,
-        )
-    new_tokens = output_ids[0][input_ids.shape[-1] :]
-    return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
 
 def build_candidate(record: dict, generate_fn: GenerateFn) -> dict:

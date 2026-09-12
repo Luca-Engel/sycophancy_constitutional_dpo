@@ -25,6 +25,26 @@ already present in a ``data/generated/candidates.jsonl`` record:
 ``answer_2_sycophantic_candidate`` and ``answer_3_principled_candidate``,
 referred to in the prompt (and in the required JSON response) simply as
 ``answer_2`` and ``answer_3`` to keep the judge's output unambiguous.
+
+**Slot randomization.** ``answer_2_sycophantic_candidate`` is always
+generated as a plain continuation of the pushback turn, while
+``answer_3_principled_candidate`` is always generated with an extra
+"pause and reconsider" turn appended first (see
+``scripts/generate_candidates.py``'s ``RECONSIDER_PROMPT``). That means the
+two candidates differ systematically in *how they were elicited*, not just
+in content -- so if they were always shown to the judge in the same
+"answer_2 = sycophantic-style, answer_3 = reconsideration-style" order,
+any position bias the judge has (a well-documented LLM-judge failure mode)
+would be indistinguishable from a genuine preference for one elicitation
+style over the other, and the generic_dpo control could end up absorbing
+the same confound instead of being a clean null condition. To avoid this,
+``assign_candidate_slots`` decides -- independently per item and per
+condition, deterministically from the project seed -- which physical
+prompt slot (``answer_2`` or ``answer_3``) each candidate lands in.
+Callers pass the resulting ``slots`` mapping into the prompt builders (so
+the judge sees the two candidates in a randomized position) and into
+``scripts/judge_rank.py``'s ``build_dpo_record`` (to map the judge's
+slot-based verdict back to the correct chosen/rejected candidate).
 """
 
 from __future__ import annotations
@@ -32,6 +52,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 import re
 import time
 from pathlib import Path
@@ -107,9 +128,54 @@ def build_conversation_context(item: dict) -> str:
     )
 
 
-def build_constitutional_user_prompt(item: dict, constitution_text: str) -> str:
-    """constitutional_dpo rubric: full constitution text + explicit pushback framing."""
+def assign_candidate_slots(item_id: str, seed: int, condition: str) -> dict[str, str]:
+    """Decide which physical prompt slot ("answer_2" or "answer_3") each
+    underlying candidate role lands in for one item/condition pair.
+
+    Returns ``{"sycophantic": "answer_2"|"answer_3", "principled": "answer_2"|"answer_3"}``
+    (always the two distinct slots). Deterministic given
+    ``(seed, condition, item_id)`` -- keyed on the item id and condition, not
+    on iteration order, same reproducibility pattern as
+    scripts/inject_pushback.py's pick_pushback_template -- so a rerun (or a
+    later consistency check that recomputes the same slots) reproduces the
+    same assignment. Keying on ``condition`` too means the constitutional and
+    generic judge calls for the same item get independently randomized
+    slots, so neither run can leak a shared positional artifact into the
+    other.
+
+    This exists so that "sycophantic-style candidate" and "reconsideration-
+    style candidate" (see the module docstring) are not permanently glued to
+    the same prompt position across the whole dataset -- see the module
+    docstring's "Slot randomization" section for why that matters.
+    """
+    rng = random.Random(f"{seed}:slots:{condition}:{item_id}")
+    if rng.random() < 0.5:
+        return {"sycophantic": "answer_2", "principled": "answer_3"}
+    return {"sycophantic": "answer_3", "principled": "answer_2"}
+
+
+def _render_candidates_by_slot(item: dict, slots: dict[str, str]) -> str:
+    """Render both candidates under their assigned slot labels, in
+    answer_2-then-answer_3 prompt order, so the judge only ever sees neutral
+    slot labels -- never which candidate is the sycophantic-style one."""
+    text_by_role = {
+        "sycophantic": item["answer_2_sycophantic_candidate"],
+        "principled": item["answer_3_principled_candidate"],
+    }
+    text_by_slot = {slot: text_by_role[role] for role, slot in slots.items()}
+    return (
+        f"--- answer_2 ---\n{text_by_slot['answer_2']}\n\n"
+        f"--- answer_3 ---\n{text_by_slot['answer_3']}"
+    )
+
+
+def build_constitutional_user_prompt(item: dict, constitution_text: str, slots: dict[str, str]) -> str:
+    """constitutional_dpo rubric: full constitution text + explicit pushback
+    framing. ``slots`` (from ``assign_candidate_slots``) controls which
+    candidate appears under the "answer_2" vs "answer_3" label -- see the
+    module docstring's "Slot randomization" section."""
     context = build_conversation_context(item)
+    candidates_block = _render_candidates_by_slot(item, slots)
     return (
         "You are judging which of two candidate assistant replies better "
         "honors the constitution below when responding to user pushback and "
@@ -122,8 +188,7 @@ def build_constitutional_user_prompt(item: dict, constitution_text: str) -> str:
         "answer):\n\n"
         f"{context}\n\n"
         "Two candidate replies to that pushback:\n\n"
-        f"--- answer_2 ---\n{item['answer_2_sycophantic_candidate']}\n\n"
-        f"--- answer_3 ---\n{item['answer_3_principled_candidate']}\n\n"
+        f"{candidates_block}\n\n"
         "Judge which of answer_2 or answer_3 better honors the constitution's "
         "principles in how it handles this pushback -- not which one is "
         "merely more polite or more agreeable. Respond with strict JSON "
@@ -131,17 +196,20 @@ def build_constitutional_user_prompt(item: dict, constitution_text: str) -> str:
     )
 
 
-def build_generic_user_prompt(item: dict) -> str:
-    """generic_dpo (control) rubric: generic quality judgment only."""
+def build_generic_user_prompt(item: dict, slots: dict[str, str]) -> str:
+    """generic_dpo (control) rubric: generic quality judgment only. ``slots``
+    (from ``assign_candidate_slots``) controls which candidate appears under
+    the "answer_2" vs "answer_3" label -- see the module docstring's "Slot
+    randomization" section."""
     context = build_conversation_context(item)
+    candidates_block = _render_candidates_by_slot(item, slots)
     return (
         "You are comparing two candidate assistant replies and judging which "
         "one is more helpful, correct, and higher quality overall.\n\n"
         "Conversation so far:\n\n"
         f"{context}\n\n"
         "Two candidate replies:\n\n"
-        f"--- answer_2 ---\n{item['answer_2_sycophantic_candidate']}\n\n"
-        f"--- answer_3 ---\n{item['answer_3_principled_candidate']}\n\n"
+        f"{candidates_block}\n\n"
         "Judge which of answer_2 or answer_3 is the better response, based "
         "purely on general helpfulness, correctness, and quality. Respond "
         f"with strict JSON only, in exactly this shape: {_VERDICT_JSON_SHAPE}"
@@ -240,28 +308,37 @@ def call_judge(
     raise JudgeError(f"judge call failed after {max_retries} attempt(s): {last_error}")
 
 
-def mock_verdict_constitutional(item: dict) -> dict:
+def mock_verdict_constitutional(item: dict, slots: dict[str, str]) -> dict:
     """Deterministic fake constitutional verdict for --mock: always prefers
     the principled-reconsideration candidate, matching what a real
-    constitution-aware judge is expected to do most of the time."""
+    constitution-aware judge is expected to do most of the time. ``slots``
+    (from ``assign_candidate_slots``) says which slot label ("answer_2" or
+    "answer_3") that candidate is sitting in for this item, so the mock's
+    output stays consistent with the (possibly shuffled) prompt a real judge
+    would have seen."""
+    chosen_slot = slots["principled"]
     return {
-        "chosen": "answer_3",
-        "reasoning": "[mock] answer_3 holds/updates its position based on the "
-        "substance of the pushback rather than caving to pressure alone.",
+        "chosen": chosen_slot,
+        "reasoning": f"[mock] the principled/reconsideration candidate (slot {chosen_slot} here) "
+        "holds/updates its position based on the substance of the pushback rather than "
+        "caving to pressure alone.",
     }
 
 
-def mock_verdict_generic(item: dict) -> dict:
+def mock_verdict_generic(item: dict, slots: dict[str, str]) -> dict:
     """Deterministic fake generic-rubric verdict for --mock: a generic
     length-as-quality-proxy heuristic, decoupled from which candidate is the
     "principled" one -- so it can (and sometimes will) disagree with the
-    constitutional mock verdict above, same as the real control condition."""
+    constitutional mock verdict above, same as the real control condition.
+    ``slots`` (from ``assign_candidate_slots``) maps the chosen role back to
+    its slot label for this item."""
     answer_2 = item["answer_2_sycophantic_candidate"]
     answer_3 = item["answer_3_principled_candidate"]
-    chosen = "answer_2" if len(answer_2) >= len(answer_3) else "answer_3"
+    chosen_role = "sycophantic" if len(answer_2) >= len(answer_3) else "principled"
+    chosen_slot = slots[chosen_role]
     return {
-        "chosen": chosen,
-        "reasoning": f"[mock] {chosen} is the longer, more detailed response.",
+        "chosen": chosen_slot,
+        "reasoning": f"[mock] the longer, more detailed response (slot {chosen_slot} here) is preferred.",
     }
 
 

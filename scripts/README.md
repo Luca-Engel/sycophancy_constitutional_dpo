@@ -70,6 +70,35 @@ uv run scripts/judge_rank.py --mock --limit 5
 
 Writes `data/preference_pairs/generic_dpo.jsonl` and `constitutional_dpo.jsonl`.
 
+Candidate order in the judge prompt is randomized per item/condition
+(`judge_common.assign_candidate_slots`) so judge position bias can't be
+confounded with which candidate is the sycophantic-style vs
+principled/reconsideration-style one -- see `judge_common.py`'s module
+docstring. `check_judge_consistency.py` (below) is the direct check that
+this is working.
+
+## 5b. `check_judge_consistency.py`
+
+Spot-checks judge position bias: for a small sample of `candidates.jsonl`
+items, calls the judge twice per item/condition (the real slot ordering and
+the deliberately flipped one) and reports how often the *underlying
+candidate preferred* changes just because of position. Costs 2x the normal
+judge-call budget for the sampled items -- keep `--sample-size` small for a
+real run.
+
+```
+# Mock dry run (no API key/network):
+uv run scripts/check_judge_consistency.py --mock --sample-size 5
+
+# Real run (small, cheap sample):
+uv run scripts/check_judge_consistency.py --sample-size 20 --condition constitutional
+```
+
+Writes a report to `outputs/eval/judge_consistency_check.json` (also
+printed to stdout as a summary). Run this once after a real `judge_rank.py`
+run (or on a partial `candidates.jsonl`) before trusting the resulting
+preference-pair dataset.
+
 ## 6. `train_dpo.py`
 
 DPO/LoRA fine-tunes the policy model on one condition's preference pairs.

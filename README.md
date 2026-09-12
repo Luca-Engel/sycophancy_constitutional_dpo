@@ -107,6 +107,28 @@ appropriately. generic_dpo's judge prompt asks for generic
 helpfulness/correctness/clarity ranking and never sees this file. The gap
 between generic_dpo and constitutional_dpo is the experiment.
 
+**Candidate order is randomized to isolate that gap.** The two candidates a
+judge compares (`answer_2_sycophantic_candidate` and
+`answer_3_principled_candidate`) aren't neutral, interchangeable samples --
+`answer_3` is elicited with an extra "pause and reconsider" turn
+(`generate_candidates.py`'s `RECONSIDER_PROMPT`) that `answer_2` never sees,
+so the two differ systematically in *how they were produced*, not just in
+content. If they were always shown to the judge in the same fixed
+answer_2/answer_3 order, any position bias the judge has (a documented
+LLM-judge failure mode) would be indistinguishable from a genuine
+preference for one elicitation style, and generic_dpo -- the whole point of
+which is to be a clean, constitution-free control -- could end up absorbing
+the same confound instead of being a true null. `judge_common.py`'s
+`assign_candidate_slots` fixes this: which slot ("answer_2" or "answer_3")
+each candidate lands in is randomized independently per item and per
+condition (deterministically, from the project seed), and
+`judge_rank.py`'s `build_dpo_record` un-shuffles the judge's verdict back to
+the correct candidate before writing the preference pair.
+`scripts/check_judge_consistency.py` spot-checks that this is actually
+working, by calling the judge twice per sampled item (real ordering vs.
+deliberately flipped) and reporting how often the preferred candidate
+changes purely because of position.
+
 ## Compute & budget
 
 Target: 20-50 CHF. LoRA/DPO training on a 3B
@@ -137,7 +159,32 @@ score, flip rate for baseline/generic_dpo/constitutional_dpo on the held-out set
   come from a single judge-model call per item with no self-consistency
   sampling or human validation. Judge disagreement/inconsistency across
   reruns is expected and is itself a candidate topic for the debugging
-  incident below.
+  incident below. `scripts/check_judge_consistency.py` covers one specific
+  slice of this (position/order sensitivity, see "The constitution" above)
+  but is not a substitute for the human spot-check `docs/NEXT_STEPS.md`
+  already calls for.
+- **Eval rubric shares an author and some concepts with the constitution**:
+  `run_eval.py`'s sycophancy-verdict rubric
+  (`judge_common.SYCOPHANCY_EVAL_SYSTEM_PROMPT` /
+  `build_sycophancy_eval_user_prompt`) never shows the judge
+  `configs/constitution.md`, but both documents were written by the same
+  person and lean on overlapping ideas ("unjustified pressure," "a
+  legitimate reason to update"). That's intentional -- the eval needs its
+  own definition of sycophancy independent of training -- but it means a
+  constitutional_dpo win on this eval is not fully independent evidence
+  from the constitution itself; a reader should not treat the eval rubric
+  as a neutral third party without having actually compared its wording
+  against the constitution's.
+- **Train/eval category-distribution mismatch**: per
+  `data/train_seed/MANIFEST.md`, the training-seed pool is ~60%
+  `opinion_agreement` items, while the eval-holdout set is only ~15%
+  (round-robin category balancing caps any one category from dominating
+  the smaller holdout set -- see `split_eval_holdout.py`). So the model is
+  trained mostly on stated-opinion-style pushback and evaluated mostly on
+  factual-pushback-style items. This may or may not matter for
+  generalization; it hasn't been checked, and the results write-up should
+  say whether the per-category breakdown (already planned in
+  `docs/NEXT_STEPS.md` §4-5) shows a gap between these two regimes.
 - **Synthetic fallback data**: `fetch_sycophancy_data.py` falls back to a
   small bundled synthetic prompt set (`data/fallback_seed_prompts.jsonl`)
   only if every public network source is unreachable. The actual data run

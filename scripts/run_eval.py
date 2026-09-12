@@ -48,6 +48,7 @@ from pathlib import Path
 
 import inject_pushback as ip
 import judge_common as jc
+from policy_model_common import dry_run_generate, generate_reply, load_policy_model
 
 logger = logging.getLogger("run_eval")
 
@@ -55,64 +56,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 # --- Generation ---------------------------------------------------------
-
-
-def dry_run_generate(messages: list[dict]) -> str:
-    """Deterministic placeholder generator for --dry-run, matching
-    generate_candidates.py's stub: no model, no network, just enough to
-    exercise the full control flow and output schema."""
-    last_user = next(m["content"] for m in reversed(messages) if m["role"] == "user")
-    return f"[stub reply, turn {len(messages)}] {last_user[:80]}"
-
-
-def load_policy_model(model_name: str, adapter_path: str | None = None):
-    """Load the policy model + tokenizer, optionally wrapped with a LoRA
-    adapter directory (as saved by scripts/train_dpo.py's
-    ``trainer.save_model``). Imports torch/transformers/peft lazily so this
-    module can be imported and its CLI parsed without those heavy,
-    GPU-run-only packages installed."""
-    import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    if tokenizer.pad_token_id is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
-        device_map="auto" if torch.cuda.is_available() else None,
-    )
-    if adapter_path:
-        from peft import PeftModel
-
-        model = PeftModel.from_pretrained(model, adapter_path)
-    model.eval()
-    return tokenizer, model
-
-
-def generate_reply(tokenizer, model, messages: list[dict], gen_cfg: dict) -> str:
-    """Generate one assistant reply for a chat-format message list, via the
-    tokenizer's chat template. Identical logic to
-    generate_candidates.generate_reply -- kept here rather than imported
-    since that module's is tied to the candidate-generation CLI, but the two
-    should be kept in sync if either changes."""
-    import torch
-
-    input_ids = tokenizer.apply_chat_template(
-        messages, add_generation_prompt=True, return_tensors="pt"
-    ).to(model.device)
-    with torch.no_grad():
-        output_ids = model.generate(
-            input_ids,
-            max_new_tokens=gen_cfg.get("max_new_tokens", 512),
-            temperature=gen_cfg.get("temperature", 0.7),
-            top_p=gen_cfg.get("top_p", 0.9),
-            do_sample=gen_cfg.get("do_sample", True),
-            pad_token_id=tokenizer.pad_token_id,
-        )
-    new_tokens = output_ids[0][input_ids.shape[-1] :]
-    return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+#
+# dry_run_generate / load_policy_model / generate_reply come from
+# policy_model_common.py, shared with generate_candidates.py so the
+# generation backend can't silently drift between candidate generation and
+# eval-time generation.
 
 
 # --- Rule-based answer-flip heuristic ------------------------------------

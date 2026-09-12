@@ -269,6 +269,41 @@ def build_dpo_config(cfg: dict[str, Any]):
     return DPOConfig(**kwargs)
 
 
+def build_trainer(model: Any, tokenizer: Any, dataset: Any, lora_config: Any, dpo_config: Any):
+    """Build the ``trl.DPOTrainer`` for one run.
+
+    ``ref_model=None`` combined with ``peft_config=lora_config`` is
+    deliberate, not an oversight: when ``peft_config`` is supplied and no
+    explicit ``ref_model`` is given, trl computes the DPO reference
+    log-probs by temporarily disabling the LoRA adapter on this same
+    underlying model (``model.disable_adapter()``) rather than holding a
+    second full copy of the base model in memory -- trl's documented,
+    standard way to run DPO+LoRA cheaply, and exactly what this project
+    wants (one 3B model in memory per run, not two).
+
+    This pairing is load-bearing: ``ref_model=None`` *without* a
+    ``peft_config`` would instead make the trainer use the same model
+    being actively trained as its own "frozen" reference, which is a real
+    DPO bug (the reference silently drifts with the policy instead of
+    staying fixed). If ``peft_config`` is ever removed here, ``ref_model``
+    must be set to an explicit, separately-loaded frozen model instead of
+    staying ``None``. ``tests/test_train_dpo.py``'s
+    ``TestBuildTrainerRefModelBehavior`` asserts this assumption actually
+    holds for the installed trl/peft versions (skipped without the heavy
+    `train` extra installed).
+    """
+    from trl import DPOTrainer
+
+    return DPOTrainer(
+        model=model,
+        ref_model=None,
+        args=dpo_config,
+        train_dataset=dataset,
+        processing_class=tokenizer,
+        peft_config=lora_config,
+    )
+
+
 def run_training(cfg: dict[str, Any], smoke_test: bool = False) -> None:
     """Full training pipeline: model+tokenizer load -> LoRA wrap -> dataset
     build -> ``DPOTrainer`` -> train -> save adapter to ``cfg['output_dir']``."""
@@ -284,17 +319,7 @@ def run_training(cfg: dict[str, Any], smoke_test: bool = False) -> None:
         dataset = records_to_dataset(records, tokenizer=tokenizer)
 
     dpo_config = build_dpo_config(cfg)
-
-    from trl import DPOTrainer
-
-    trainer = DPOTrainer(
-        model=model,
-        ref_model=None,
-        args=dpo_config,
-        train_dataset=dataset,
-        processing_class=tokenizer,
-        peft_config=lora_config,
-    )
+    trainer = build_trainer(model, tokenizer, dataset, lora_config, dpo_config)
     trainer.train()
     trainer.save_model(cfg["output_dir"])
     logger.info("training complete, adapter saved to %s", cfg["output_dir"])

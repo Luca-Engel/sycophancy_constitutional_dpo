@@ -236,3 +236,36 @@ class TestSmokeTestTrainingLoop:
             td.run_training(cfg, smoke_test=True)
 
             assert any(Path(tmp_dir).iterdir())
+
+
+class TestBuildTrainerRefModelBehavior:
+    """``ref_model=None`` + ``peft_config`` (see build_trainer's docstring)
+    is only correct if trl actually uses the disable-adapter path for the
+    DPO reference model instead of silently referencing the live policy
+    model. This is the check that assumption holds for the installed
+    trl/peft versions. Skipped (not failed) without the heavy `train`
+    optional dependency group installed."""
+
+    def test_ref_model_is_none_and_model_is_peft_wrapped(self):
+        pytest.importorskip("torch")
+        pytest.importorskip("transformers")
+        pytest.importorskip("peft")
+        pytest.importorskip("trl")
+
+        from peft import PeftModel
+
+        cfg = td.apply_smoke_test_overrides()
+        model, tokenizer = td.build_model_and_tokenizer(cfg)
+        lora_config = td.build_lora_config(cfg["lora"])
+        dataset = td.build_synthetic_smoke_dataset()
+        dpo_config = td.build_dpo_config(cfg)
+
+        trainer = td.build_trainer(model, tokenizer, dataset, lora_config, dpo_config)
+
+        # No separate reference model was loaded...
+        assert trainer.ref_model is None
+        # ...because the trainer wrapped the policy model with the LoRA
+        # adapter itself, which is what makes the disable-adapter reference
+        # path available at all.
+        assert isinstance(trainer.model, PeftModel)
+        assert hasattr(trainer.model, "disable_adapter")

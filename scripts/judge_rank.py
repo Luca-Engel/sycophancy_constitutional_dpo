@@ -89,23 +89,30 @@ def build_dpo_prompt_messages(item: dict) -> list[dict]:
     ]
 
 
-def build_dpo_record(item: dict, verdict: dict) -> dict:
-    """Turn one candidates.jsonl item + a judge verdict into a DPO pair."""
-    if verdict["chosen"] == "answer_2":
-        chosen_key, rejected_key = (
-            "answer_2_sycophantic_candidate",
-            "answer_3_principled_candidate",
-        )
-    else:
-        chosen_key, rejected_key = (
-            "answer_3_principled_candidate",
-            "answer_2_sycophantic_candidate",
-        )
+_ROLE_TO_CANDIDATE_KEY = {
+    "sycophantic": "answer_2_sycophantic_candidate",
+    "principled": "answer_3_principled_candidate",
+}
+
+
+def build_dpo_record(item: dict, verdict: dict, slots: dict[str, str]) -> dict:
+    """Turn one candidates.jsonl item + a judge verdict into a DPO pair.
+
+    ``verdict["chosen"]`` is a *slot* label ("answer_2" or "answer_3"), not a
+    role -- because the judge only ever saw neutral, randomized slot labels
+    (see judge_common.assign_candidate_slots). ``slots`` (the same mapping
+    passed to the judge for this item/condition) un-shuffles the verdict back
+    to which underlying candidate (the sycophantic-style or the
+    principled/reconsideration-style one) was actually chosen.
+    """
+    role_by_slot = {slot: role for role, slot in slots.items()}
+    chosen_role = role_by_slot[verdict["chosen"]]
+    rejected_role = "principled" if chosen_role == "sycophantic" else "sycophantic"
     return {
         "id": item["id"],
         "prompt": build_dpo_prompt_messages(item),
-        "chosen": item[chosen_key],
-        "rejected": item[rejected_key],
+        "chosen": item[_ROLE_TO_CANDIDATE_KEY[chosen_role]],
+        "rejected": item[_ROLE_TO_CANDIDATE_KEY[rejected_role]],
         "judge_reasoning": verdict.get("reasoning", ""),
     }
 
@@ -115,6 +122,7 @@ def get_verdict(
     condition: str,
     *,
     mock: bool,
+    slots: dict[str, str],
     client=None,
     model: str | None = None,
     constitution_text: str | None = None,
@@ -123,21 +131,25 @@ def get_verdict(
     """Dispatch to the mock or real judge for one item/condition pair.
 
     ``condition`` is ``"constitutional"`` (constitutional_dpo) or
-    ``"generic"`` (generic_dpo). Raises judge_common.JudgeError if a real
-    call fails after all retries -- never raises for --mock (it's
+    ``"generic"`` (generic_dpo). ``slots`` (from
+    ``judge_common.assign_candidate_slots``) is required -- it controls which
+    candidate the judge sees under the "answer_2" vs "answer_3" label, so
+    position bias can't be confounded with which candidate is which (see
+    judge_common's module docstring). Raises judge_common.JudgeError if a
+    real call fails after all retries -- never raises for --mock (it's
     deterministic and offline).
     """
     if mock:
         if condition == "constitutional":
-            return jc.mock_verdict_constitutional(item)
-        return jc.mock_verdict_generic(item)
+            return jc.mock_verdict_constitutional(item, slots)
+        return jc.mock_verdict_generic(item, slots)
 
     if condition == "constitutional":
         system_prompt = jc.CONSTITUTIONAL_SYSTEM_PROMPT
-        user_prompt = jc.build_constitutional_user_prompt(item, constitution_text or "")
+        user_prompt = jc.build_constitutional_user_prompt(item, constitution_text or "", slots)
     else:
         system_prompt = jc.GENERIC_SYSTEM_PROMPT
-        user_prompt = jc.build_generic_user_prompt(item)
+        user_prompt = jc.build_generic_user_prompt(item, slots)
 
     return jc.call_judge(client, model, system_prompt, user_prompt, max_retries=max_retries)
 
@@ -217,6 +229,8 @@ def main() -> None:
         len(items) - len(todo) if args.limit is None else -1,
     )
 
+    seed = cfg["seed"]
+
     client = None
     model = None
     constitution_text = None
@@ -252,11 +266,13 @@ def main() -> None:
                     stopped_early = True
                     break
                 call_count += 1
+                slots = jc.assign_candidate_slots(item["id"], seed, "constitutional")
                 try:
                     verdict = get_verdict(
                         item,
                         "constitutional",
                         mock=args.mock,
+                        slots=slots,
                         client=client,
                         model=model,
                         constitution_text=constitution_text,
@@ -265,7 +281,7 @@ def main() -> None:
                 except jc.JudgeError as exc:
                     logger.error("skipping id=%s condition=constitutional_dpo: %s", item["id"], exc)
                 else:
-                    record = build_dpo_record(item, verdict)
+                    record = build_dpo_record(item, verdict, slots)
                     f_constitutional.write(json.dumps(record, ensure_ascii=False) + "\n")
                     f_constitutional.flush()
                     done_constitutional.add(item["id"])
@@ -276,11 +292,13 @@ def main() -> None:
                     stopped_early = True
                     break
                 call_count += 1
+                slots = jc.assign_candidate_slots(item["id"], seed, "generic")
                 try:
                     verdict = get_verdict(
                         item,
                         "generic",
                         mock=args.mock,
+                        slots=slots,
                         client=client,
                         model=model,
                         max_retries=max_retries,
@@ -288,7 +306,7 @@ def main() -> None:
                 except jc.JudgeError as exc:
                     logger.error("skipping id=%s condition=generic_dpo: %s", item["id"], exc)
                 else:
-                    record = build_dpo_record(item, verdict)
+                    record = build_dpo_record(item, verdict, slots)
                     f_generic.write(json.dumps(record, ensure_ascii=False) + "\n")
                     f_generic.flush()
                     done_generic.add(item["id"])

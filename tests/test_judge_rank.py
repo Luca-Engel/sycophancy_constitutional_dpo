@@ -69,51 +69,111 @@ class _FakeBlock:
 
 CONSTITUTION_TEXT = "1. Don't flip on pressure alone.\n2. Actually update when the user is right."
 
+SLOTS_IDENTITY = {"sycophantic": "answer_2", "principled": "answer_3"}
+SLOTS_SWAPPED = {"sycophantic": "answer_3", "principled": "answer_2"}
+
 
 class TestPromptConstruction:
     def test_constitutional_prompt_includes_full_constitution_text(self):
         item = _candidate_items()[0]
-        prompt = jc.build_constitutional_user_prompt(item, CONSTITUTION_TEXT)
+        prompt = jc.build_constitutional_user_prompt(item, CONSTITUTION_TEXT, SLOTS_IDENTITY)
         assert CONSTITUTION_TEXT in prompt
 
     def test_constitutional_prompt_frames_pushback_and_constitution(self):
         item = _candidate_items()[0]
-        prompt = jc.build_constitutional_user_prompt(item, CONSTITUTION_TEXT).lower()
+        prompt = jc.build_constitutional_user_prompt(item, CONSTITUTION_TEXT, SLOTS_IDENTITY).lower()
         assert "constitution" in prompt
         assert "pushback" in prompt
 
     def test_constitutional_prompt_includes_both_candidates(self):
         item = _candidate_items()[0]
-        prompt = jc.build_constitutional_user_prompt(item, CONSTITUTION_TEXT)
+        prompt = jc.build_constitutional_user_prompt(item, CONSTITUTION_TEXT, SLOTS_IDENTITY)
         assert item["answer_2_sycophantic_candidate"] in prompt
         assert item["answer_3_principled_candidate"] in prompt
 
     def test_generic_prompt_excludes_forbidden_framing_words(self):
         item = _candidate_items()[0]
-        prompt = jc.build_generic_user_prompt(item).lower()
+        prompt = jc.build_generic_user_prompt(item, SLOTS_IDENTITY).lower()
         for forbidden in ("constitution", "pushback", "sycophan", "consisten"):
             assert forbidden not in prompt
 
     def test_generic_prompt_is_generic_quality_framing(self):
         item = _candidate_items()[0]
-        prompt = jc.build_generic_user_prompt(item).lower()
+        prompt = jc.build_generic_user_prompt(item, SLOTS_IDENTITY).lower()
         assert "helpful" in prompt
         assert "quality" in prompt
 
     def test_generic_prompt_includes_both_candidates(self):
         item = _candidate_items()[0]
-        prompt = jc.build_generic_user_prompt(item)
+        prompt = jc.build_generic_user_prompt(item, SLOTS_IDENTITY)
         assert item["answer_2_sycophantic_candidate"] in prompt
         assert item["answer_3_principled_candidate"] in prompt
 
     def test_both_prompts_request_json_shape(self):
         item = _candidate_items()[0]
         for prompt in (
-            jc.build_constitutional_user_prompt(item, CONSTITUTION_TEXT),
-            jc.build_generic_user_prompt(item),
+            jc.build_constitutional_user_prompt(item, CONSTITUTION_TEXT, SLOTS_IDENTITY),
+            jc.build_generic_user_prompt(item, SLOTS_IDENTITY),
         ):
             assert "answer_2" in prompt and "answer_3" in prompt
             assert "json" in prompt.lower()
+
+
+class TestSlotRandomization:
+    """Covers the position-bias fix: which candidate lands under the
+    "answer_2" vs "answer_3" label must not be permanently fixed to which
+    candidate is which (see judge_common.py's module docstring)."""
+
+    def test_assign_candidate_slots_always_uses_both_distinct_slots(self):
+        for i in range(50):
+            slots = jc.assign_candidate_slots(f"item-{i}", seed=42, condition="constitutional")
+            assert set(slots.keys()) == {"sycophantic", "principled"}
+            assert {slots["sycophantic"], slots["principled"]} == {"answer_2", "answer_3"}
+
+    def test_assign_candidate_slots_is_deterministic(self):
+        a = jc.assign_candidate_slots("item-7", seed=42, condition="constitutional")
+        b = jc.assign_candidate_slots("item-7", seed=42, condition="constitutional")
+        assert a == b
+
+    def test_assign_candidate_slots_varies_across_items_both_ways(self):
+        """With a reasonable sample of ids, both slot assignments should
+        actually occur -- otherwise the "randomization" isn't randomizing."""
+        assignments = {
+            jc.assign_candidate_slots(f"item-{i}", seed=42, condition="constitutional")["sycophantic"]
+            for i in range(50)
+        }
+        assert assignments == {"answer_2", "answer_3"}
+
+    def test_assign_candidate_slots_condition_is_not_ignored(self):
+        """Keying on condition means the constitutional and generic judge
+        calls for the same item don't share a positional artifact: across a
+        handful of item ids, at least one must flip slots between the two
+        conditions (if condition were ignored, every id would agree)."""
+        disagreements = 0
+        for i in range(20):
+            item_id = f"item-{i}"
+            constitutional = jc.assign_candidate_slots(item_id, seed=42, condition="constitutional")
+            generic = jc.assign_candidate_slots(item_id, seed=42, condition="generic")
+            if constitutional != generic:
+                disagreements += 1
+        assert disagreements > 0
+
+    def test_constitutional_prompt_places_candidates_per_swapped_slots(self):
+        item = _candidate_items()[0]
+        prompt = jc.build_constitutional_user_prompt(item, CONSTITUTION_TEXT, SLOTS_SWAPPED)
+        # sycophantic candidate now sits under the "answer_3" label, principled under "answer_2"
+        answer_2_block = prompt.split("--- answer_2 ---")[1].split("--- answer_3 ---")[0]
+        answer_3_block = prompt.split("--- answer_3 ---")[1]
+        assert item["answer_3_principled_candidate"] in answer_2_block
+        assert item["answer_2_sycophantic_candidate"] in answer_3_block
+
+    def test_generic_prompt_places_candidates_per_identity_slots(self):
+        item = _candidate_items()[0]
+        prompt = jc.build_generic_user_prompt(item, SLOTS_IDENTITY)
+        answer_2_block = prompt.split("--- answer_2 ---")[1].split("--- answer_3 ---")[0]
+        answer_3_block = prompt.split("--- answer_3 ---")[1]
+        assert item["answer_2_sycophantic_candidate"] in answer_2_block
+        assert item["answer_3_principled_candidate"] in answer_3_block
 
 
 class TestParseVerdict:
@@ -188,24 +248,41 @@ class TestCallJudge:
 
 
 class TestMockVerdicts:
-    def test_constitutional_mock_prefers_principled_candidate(self):
+    def test_constitutional_mock_prefers_principled_candidate_identity_slots(self):
         item = _candidate_items()[0]
-        verdict = jc.mock_verdict_constitutional(item)
+        verdict = jc.mock_verdict_constitutional(item, SLOTS_IDENTITY)
         assert verdict["chosen"] == "answer_3"
 
-    def test_generic_mock_prefers_longer_answer_2(self):
+    def test_constitutional_mock_prefers_principled_candidate_swapped_slots(self):
+        """Same underlying preference (the principled candidate), but the
+        slot label it's reported under follows wherever that candidate
+        actually landed for this item."""
+        item = _candidate_items()[0]
+        verdict = jc.mock_verdict_constitutional(item, SLOTS_SWAPPED)
+        assert verdict["chosen"] == "answer_2"
+
+    def test_generic_mock_prefers_longer_sycophantic_candidate_identity_slots(self):
         item = {
             "answer_2_sycophantic_candidate": "a" * 100,
             "answer_3_principled_candidate": "b" * 10,
         }
-        assert jc.mock_verdict_generic(item)["chosen"] == "answer_2"
+        assert jc.mock_verdict_generic(item, SLOTS_IDENTITY)["chosen"] == "answer_2"
 
-    def test_generic_mock_prefers_longer_answer_3(self):
+    def test_generic_mock_prefers_longer_principled_candidate_identity_slots(self):
         item = {
             "answer_2_sycophantic_candidate": "a" * 10,
             "answer_3_principled_candidate": "b" * 100,
         }
-        assert jc.mock_verdict_generic(item)["chosen"] == "answer_3"
+        assert jc.mock_verdict_generic(item, SLOTS_IDENTITY)["chosen"] == "answer_3"
+
+    def test_generic_mock_follows_swapped_slots(self):
+        """The longer text here is the sycophantic candidate, which swapped
+        slots put under the "answer_3" label."""
+        item = {
+            "answer_2_sycophantic_candidate": "a" * 100,
+            "answer_3_principled_candidate": "b" * 10,
+        }
+        assert jc.mock_verdict_generic(item, SLOTS_SWAPPED)["chosen"] == "answer_3"
 
 
 class TestGetApiKey:
@@ -234,32 +311,58 @@ class TestBuildDpoRecord:
             {"role": "user", "content": item["pushback_text"]},
         ]
 
-    def test_record_schema_chosen_answer_2(self):
+    def test_record_schema_chosen_answer_2_identity_slots(self):
         item = _candidate_items()[0]
-        record = jr.build_dpo_record(item, {"chosen": "answer_2", "reasoning": "r"})
+        record = jr.build_dpo_record(item, {"chosen": "answer_2", "reasoning": "r"}, SLOTS_IDENTITY)
         assert record["chosen"] == item["answer_2_sycophantic_candidate"]
         assert record["rejected"] == item["answer_3_principled_candidate"]
         assert record["id"] == item["id"]
         assert record["judge_reasoning"] == "r"
         assert set(record.keys()) == {"id", "prompt", "chosen", "rejected", "judge_reasoning"}
 
-    def test_record_schema_chosen_answer_3(self):
+    def test_record_schema_chosen_answer_3_identity_slots(self):
         item = _candidate_items()[0]
-        record = jr.build_dpo_record(item, {"chosen": "answer_3", "reasoning": "r"})
+        record = jr.build_dpo_record(item, {"chosen": "answer_3", "reasoning": "r"}, SLOTS_IDENTITY)
         assert record["chosen"] == item["answer_3_principled_candidate"]
         assert record["rejected"] == item["answer_2_sycophantic_candidate"]
+
+    def test_record_un_shuffles_swapped_slots_chosen_answer_2(self):
+        """Under SLOTS_SWAPPED, "answer_2" is the *principled* candidate's
+        slot (opposite of the identity mapping) -- the record must reflect
+        that, not assume answer_2 always means the sycophantic candidate."""
+        item = _candidate_items()[0]
+        record = jr.build_dpo_record(item, {"chosen": "answer_2", "reasoning": "r"}, SLOTS_SWAPPED)
+        assert record["chosen"] == item["answer_3_principled_candidate"]
+        assert record["rejected"] == item["answer_2_sycophantic_candidate"]
+
+    def test_record_un_shuffles_swapped_slots_chosen_answer_3(self):
+        """Under SLOTS_SWAPPED, "answer_3" is the *sycophantic* candidate's slot."""
+        item = _candidate_items()[0]
+        record = jr.build_dpo_record(item, {"chosen": "answer_3", "reasoning": "r"}, SLOTS_SWAPPED)
+        assert record["chosen"] == item["answer_2_sycophantic_candidate"]
+        assert record["rejected"] == item["answer_3_principled_candidate"]
+
+    def test_same_verdict_slot_yields_opposite_record_under_swapped_slots(self):
+        """The whole point of the fix: the same judge output ("chosen":
+        "answer_2") must resolve to a *different* underlying candidate
+        depending on how that item's slots were assigned."""
+        item = _candidate_items()[0]
+        verdict = {"chosen": "answer_2", "reasoning": "r"}
+        identity_record = jr.build_dpo_record(item, verdict, SLOTS_IDENTITY)
+        swapped_record = jr.build_dpo_record(item, verdict, SLOTS_SWAPPED)
+        assert identity_record["chosen"] != swapped_record["chosen"]
 
 
 class TestGetVerdictDispatch:
     def test_mock_constitutional(self):
         item = _candidate_items()[0]
-        verdict = jr.get_verdict(item, "constitutional", mock=True)
-        assert verdict == jc.mock_verdict_constitutional(item)
+        verdict = jr.get_verdict(item, "constitutional", mock=True, slots=SLOTS_IDENTITY)
+        assert verdict == jc.mock_verdict_constitutional(item, SLOTS_IDENTITY)
 
     def test_mock_generic(self):
         item = _candidate_items()[0]
-        verdict = jr.get_verdict(item, "generic", mock=True)
-        assert verdict == jc.mock_verdict_generic(item)
+        verdict = jr.get_verdict(item, "generic", mock=True, slots=SLOTS_IDENTITY)
+        assert verdict == jc.mock_verdict_generic(item, SLOTS_IDENTITY)
 
     def test_real_constitutional_calls_call_judge_with_constitutional_prompts(self, monkeypatch):
         captured = {}
@@ -280,6 +383,7 @@ class TestGetVerdictDispatch:
             item,
             "constitutional",
             mock=False,
+            slots=SLOTS_IDENTITY,
             client="fake-client",
             model="fake-model",
             constitution_text=CONSTITUTION_TEXT,
@@ -299,9 +403,32 @@ class TestGetVerdictDispatch:
 
         monkeypatch.setattr(jc, "call_judge", fake_call_judge)
         item = _candidate_items()[0]
-        jr.get_verdict(item, "generic", mock=False, client="fake-client", model="fake-model")
+        jr.get_verdict(item, "generic", mock=False, slots=SLOTS_IDENTITY, client="fake-client", model="fake-model")
         assert captured["system_prompt"] == jc.GENERIC_SYSTEM_PROMPT
         assert "constitution" not in captured["user_prompt"].lower()
+
+    def test_real_constitutional_respects_swapped_slots(self, monkeypatch):
+        """Confirms get_verdict actually threads slots into the prompt
+        builder rather than ignoring them."""
+        captured = {}
+
+        def fake_call_judge(client, model, system_prompt, user_prompt, max_retries=3):
+            captured["user_prompt"] = user_prompt
+            return {"chosen": "answer_2", "reasoning": "x"}
+
+        monkeypatch.setattr(jc, "call_judge", fake_call_judge)
+        item = _candidate_items()[0]
+        jr.get_verdict(
+            item,
+            "constitutional",
+            mock=False,
+            slots=SLOTS_SWAPPED,
+            client="fake-client",
+            model="fake-model",
+            constitution_text=CONSTITUTION_TEXT,
+        )
+        answer_2_block = captured["user_prompt"].split("--- answer_2 ---")[1].split("--- answer_3 ---")[0]
+        assert item["answer_3_principled_candidate"] in answer_2_block
 
 
 class TestArgParser:
