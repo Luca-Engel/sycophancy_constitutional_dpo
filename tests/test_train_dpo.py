@@ -12,8 +12,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 def _valid_cfg(**overrides) -> dict:
     cfg = {
         "base_model": "Qwen/Qwen2.5-3B-Instruct",
-        "dataset_path": "data/preference_pairs/condition_c.jsonl",
-        "output_dir": "outputs/dpo_condition_c",
+        "dataset_path": "data/preference_pairs/constitutional_dpo.jsonl",
+        "output_dir": "outputs/constitutional_dpo",
         "lora": {"r": 16, "alpha": 32, "dropout": 0.05, "target_modules": ["q_proj", "v_proj"]},
         "learning_rate": 5e-5,
         "beta": 0.1,
@@ -105,29 +105,29 @@ class TestApplySmokeTestOverrides:
         assert cfg["max_steps"] == 1
 
     def test_layers_on_top_of_loaded_config(self):
-        base_cfg = _valid_cfg(output_dir="outputs/dpo_condition_c")
+        base_cfg = _valid_cfg(output_dir="outputs/constitutional_dpo")
         cfg = td.apply_smoke_test_overrides(base_cfg)
 
         td.validate_config(cfg)  # no raise
         assert cfg["base_model"] == td.SMOKE_TEST_MODEL
         # output_dir is preserved from the loaded config since the override
         # only sets it via setdefault.
-        assert cfg["output_dir"] == "outputs/dpo_condition_c"
+        assert cfg["output_dir"] == "outputs/constitutional_dpo"
         assert cfg["dataset_path"] is None
         assert cfg["_smoke_test_dataset"] is True
 
 
 class TestExampleConfigs:
-    @pytest.mark.parametrize("name", ["train_condition_b.yaml", "train_condition_c.yaml"])
+    @pytest.mark.parametrize("name", ["train_generic_dpo.yaml", "train_constitutional_dpo.yaml"])
     def test_example_config_is_valid(self, name):
         cfg = td.load_config(REPO_ROOT / "configs" / name)
         td.validate_config(cfg)  # no raise
 
-    def test_b_and_c_differ_only_in_dataset_and_output(self):
-        cfg_b = td.load_config(REPO_ROOT / "configs" / "train_condition_b.yaml")
-        cfg_c = td.load_config(REPO_ROOT / "configs" / "train_condition_c.yaml")
+    def test_generic_and_constitutional_differ_only_in_dataset_and_output(self):
+        cfg_generic = td.load_config(REPO_ROOT / "configs" / "train_generic_dpo.yaml")
+        cfg_constitutional = td.load_config(REPO_ROOT / "configs" / "train_constitutional_dpo.yaml")
 
-        diff_keys = {k for k in cfg_b if cfg_b.get(k) != cfg_c.get(k)}
+        diff_keys = {k for k in cfg_generic if cfg_generic.get(k) != cfg_constitutional.get(k)}
         assert diff_keys == {"dataset_path", "output_dir"}
 
 
@@ -213,8 +213,8 @@ class TestArgParser:
         assert args.config is None
 
     def test_config_flag_parses(self):
-        args = td.build_arg_parser().parse_args(["--config", "configs/train_condition_c.yaml"])
-        assert args.config == "configs/train_condition_c.yaml"
+        args = td.build_arg_parser().parse_args(["--config", "configs/train_constitutional_dpo.yaml"])
+        assert args.config == "configs/train_constitutional_dpo.yaml"
         assert args.smoke_test is False
 
 

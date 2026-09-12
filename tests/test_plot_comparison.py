@@ -44,25 +44,25 @@ class TestLoadConditionSummaries:
 
     def test_single_condition_found(self, tmp_path):
         eval_dir = tmp_path / "eval"
-        _write_summary(eval_dir, "base")
+        _write_summary(eval_dir, "baseline")
         summaries = pc.load_condition_summaries(eval_dir)
         assert len(summaries) == 1
-        assert summaries[0]["condition_name"] == "base"
+        assert summaries[0]["condition_name"] == "baseline"
 
     def test_canonical_ordering_regardless_of_write_order(self, tmp_path):
         eval_dir = tmp_path / "eval"
         _write_summary(eval_dir, "constitutional_dpo")
-        _write_summary(eval_dir, "base")
-        _write_summary(eval_dir, "plain_dpo")
+        _write_summary(eval_dir, "baseline")
+        _write_summary(eval_dir, "generic_dpo")
         summaries = pc.load_condition_summaries(eval_dir)
-        assert [s["condition_name"] for s in summaries] == ["base", "plain_dpo", "constitutional_dpo"]
+        assert [s["condition_name"] for s in summaries] == ["baseline", "generic_dpo", "constitutional_dpo"]
 
     def test_unknown_condition_name_sorted_after_canonical_ones(self, tmp_path):
         eval_dir = tmp_path / "eval"
-        _write_summary(eval_dir, "base")
+        _write_summary(eval_dir, "baseline")
         _write_summary(eval_dir, "experimental_variant")
         summaries = pc.load_condition_summaries(eval_dir)
-        assert [s["condition_name"] for s in summaries] == ["base", "experimental_variant"]
+        assert [s["condition_name"] for s in summaries] == ["baseline", "experimental_variant"]
 
 
 class TestPlotComparison:
@@ -74,7 +74,7 @@ class TestPlotComparison:
 
     def test_single_condition_produces_png(self, tmp_path):
         eval_dir = tmp_path / "eval"
-        _write_summary(eval_dir, "base")
+        _write_summary(eval_dir, "baseline")
         summaries = pc.load_condition_summaries(eval_dir)
         out_path = tmp_path / "comparison.png"
         pc.plot_comparison(summaries, out_path)
@@ -83,8 +83,8 @@ class TestPlotComparison:
 
     def test_partial_two_conditions_produces_png(self, tmp_path):
         eval_dir = tmp_path / "eval"
-        _write_summary(eval_dir, "base", sycophancy_rate=0.6)
-        _write_summary(eval_dir, "plain_dpo", sycophancy_rate=0.4)
+        _write_summary(eval_dir, "baseline", sycophancy_rate=0.6)
+        _write_summary(eval_dir, "generic_dpo", sycophancy_rate=0.4)
         summaries = pc.load_condition_summaries(eval_dir)
         out_path = tmp_path / "comparison.png"
         pc.plot_comparison(summaries, out_path)
@@ -93,8 +93,8 @@ class TestPlotComparison:
 
     def test_all_three_conditions_produces_png(self, tmp_path):
         eval_dir = tmp_path / "eval"
-        _write_summary(eval_dir, "base", sycophancy_rate=0.7)
-        _write_summary(eval_dir, "plain_dpo", sycophancy_rate=0.5)
+        _write_summary(eval_dir, "baseline", sycophancy_rate=0.7)
+        _write_summary(eval_dir, "generic_dpo", sycophancy_rate=0.5)
         _write_summary(eval_dir, "constitutional_dpo", sycophancy_rate=0.2)
         summaries = pc.load_condition_summaries(eval_dir)
         out_path = tmp_path / "comparison.png"
@@ -104,7 +104,7 @@ class TestPlotComparison:
 
     def test_none_rate_handled_without_erroring(self, tmp_path):
         eval_dir = tmp_path / "eval"
-        _write_summary(eval_dir, "base", sycophancy_rate=None, avg_judge_score=None)
+        _write_summary(eval_dir, "baseline", sycophancy_rate=None, avg_judge_score=None)
         summaries = pc.load_condition_summaries(eval_dir)
         out_path = tmp_path / "comparison.png"
         pc.plot_comparison(summaries, out_path)
@@ -141,7 +141,7 @@ class TestMainEndToEnd:
 
     def test_partial_results_writes_png(self, tmp_path, monkeypatch):
         eval_dir = tmp_path / "eval"
-        _write_summary(eval_dir, "base")
+        _write_summary(eval_dir, "baseline")
         out_path = tmp_path / "out.png"
 
         _run_main(monkeypatch, ["--eval-dir", str(eval_dir), "--out", str(out_path)])
@@ -150,8 +150,8 @@ class TestMainEndToEnd:
 
     def test_full_results_writes_png(self, tmp_path, monkeypatch):
         eval_dir = tmp_path / "eval"
-        _write_summary(eval_dir, "base")
-        _write_summary(eval_dir, "plain_dpo")
+        _write_summary(eval_dir, "baseline")
+        _write_summary(eval_dir, "generic_dpo")
         _write_summary(eval_dir, "constitutional_dpo")
         out_path = tmp_path / "out.png"
 
@@ -161,7 +161,7 @@ class TestMainEndToEnd:
 
     def test_default_out_path_is_inside_eval_dir(self, tmp_path, monkeypatch):
         eval_dir = tmp_path / "eval"
-        _write_summary(eval_dir, "base")
+        _write_summary(eval_dir, "baseline")
 
         _run_main(monkeypatch, ["--eval-dir", str(eval_dir)])
 

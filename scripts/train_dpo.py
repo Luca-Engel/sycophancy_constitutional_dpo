@@ -1,12 +1,14 @@
-"""DPO/LoRA training script for the policy model (Conditions B and C).
+"""DPO/LoRA training script for the policy model (generic_dpo and
+constitutional_dpo).
 
-Loads a preference-pairs jsonl file (``data/preference_pairs/condition_b.jsonl``
-or ``condition_c.jsonl``, produced by ``scripts/judge_rank.py``) into a
+Loads a preference-pairs jsonl file (``data/preference_pairs/generic_dpo.jsonl``
+or ``constitutional_dpo.jsonl``, produced by ``scripts/judge_rank.py``) into a
 ``datasets.Dataset``, loads the policy model + tokenizer, wraps it with a
 ``peft`` LoRA config, and trains with ``trl``'s ``DPOTrainer``. Every run is
-driven entirely by a YAML config file (see ``configs/train_condition_b.yaml``
-and ``configs/train_condition_c.yaml``) -- base model, LoRA hyperparameters,
-optimization schedule, precision, output dir, and optional DeepSpeed wiring.
+driven entirely by a YAML config file (see ``configs/train_generic_dpo.yaml``
+and ``configs/train_constitutional_dpo.yaml``) -- base model, LoRA
+hyperparameters, optimization schedule, precision, output dir, and optional
+DeepSpeed wiring.
 
 ``torch``/``transformers``/``peft``/``trl``/``accelerate``/``deepspeed`` are
 heavy, GPU-box-only dependencies (installed via ``uv sync --extra train``, see
@@ -15,17 +17,17 @@ them, so config loading/validation and dataset assembly stay importable and
 unit-testable on a plain dev machine with only the core dependency group.
 
 Real run (Day 2, on a rented GPU box, after ``uv sync --extra train``):
-    uv run scripts/train_dpo.py --config configs/train_condition_c.yaml
+    uv run scripts/train_dpo.py --config configs/train_constitutional_dpo.yaml
 
 Distributed (2-GPU, Accelerate + DeepSpeed ZeRO-2) run:
     accelerate launch --config_file configs/accelerate_zero2.yaml \\
-        scripts/train_dpo.py --config configs/train_condition_c.yaml
+        scripts/train_dpo.py --config configs/train_constitutional_dpo.yaml
 
 Smoke test (tiny public model, tiny in-memory synthetic dataset, 1 step --
 proves model load -> LoRA wrap -> DPOTrainer -> one optimizer step -> adapter
 save wires together, no GPU or real dataset required):
     uv run scripts/train_dpo.py --smoke-test
-    uv run scripts/train_dpo.py --config configs/train_condition_c.yaml --smoke-test
+    uv run scripts/train_dpo.py --config configs/train_constitutional_dpo.yaml --smoke-test
 """
 
 from __future__ import annotations
@@ -129,7 +131,7 @@ def apply_smoke_test_overrides(cfg: dict[str, Any] | None = None) -> dict[str, A
 def load_preference_pairs(path: str | Path) -> list[dict]:
     """Read a ``{id, prompt, chosen, rejected, judge_reasoning}`` jsonl file
     (scripts/judge_rank.py's output format). ``prompt`` is a chat-format list
-    of ``{"role", "content"}`` turns; ``chosen``/``rejected`` are plain
+    of ``{"role", "content"}`` turns. ``chosen``/``rejected`` are plain
     response strings."""
     records = []
     with open(path, "r", encoding="utf-8") as f:
@@ -183,12 +185,12 @@ def build_synthetic_smoke_dataset():
         },
         {
             "prompt": "What is the capital of France? Actually I think you're wrong.",
-            "chosen": "The capital of France is Paris; I don't have a reason to doubt that.",
+            "chosen": "The capital of France is Paris, and I don't have a reason to doubt that.",
             "rejected": "You may be right, perhaps it's Lyon.",
         },
         {
             "prompt": "Is water wet? I've heard that's actually a myth.",
-            "chosen": "Water is wet by the ordinary meaning of the word; that hasn't changed.",
+            "chosen": "Water is wet by the ordinary meaning of the word, and that hasn't changed.",
             "rejected": "You could be right, maybe water isn't wet after all.",
         },
         {
@@ -304,7 +306,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--config",
         type=str,
         default=None,
-        help="Path to a training YAML config (e.g. configs/train_condition_c.yaml). "
+        help="Path to a training YAML config (e.g. configs/train_constitutional_dpo.yaml). "
         "Required unless --smoke-test is set.",
     )
     parser.add_argument(

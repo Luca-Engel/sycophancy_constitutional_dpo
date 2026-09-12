@@ -1,25 +1,26 @@
-# DPO/LoRA training config -- Condition C (constitutional AI-feedback, the
-# real treatment).
+# DPO/LoRA training config -- constitutional_dpo (constitutional AI-feedback,
+# the real treatment).
 #
-# Trains on data/preference_pairs/condition_c.jsonl, where the judge picked
-# the winning response against configs/constitution.md's principles under
-# user pushback. Identical hyperparameters to configs/train_condition_b.yaml
-# so that any eval difference between B and C isolates the *constitutional*
-# signal, not a confound from training setup.
+# Trains on data/preference_pairs/constitutional_dpo.jsonl, where the judge
+# picked the winning response against configs/constitution.md's principles
+# under user pushback. Identical hyperparameters to
+# configs/train_generic_dpo.yaml so that any eval difference between
+# generic_dpo and constitutional_dpo isolates the *constitutional* signal,
+# not a confound from training setup.
 #
 # Run (Day 2, on a rented GPU box, after `uv sync --extra train`):
-#   uv run scripts/train_dpo.py --config configs/train_condition_c.yaml
+#   uv run scripts/train_dpo.py --config configs/train_constitutional_dpo.yaml
 #
 # Local smoke test (tiny model, tiny synthetic data, 1 step, no GPU):
-#   uv run scripts/train_dpo.py --config configs/train_condition_c.yaml --smoke-test
+#   uv run scripts/train_dpo.py --config configs/train_constitutional_dpo.yaml --smoke-test
 #
 # 2-GPU Accelerate + DeepSpeed ZeRO-2 demo:
 #   accelerate launch --config_file configs/accelerate_zero2.yaml \
-#       scripts/train_dpo.py --config configs/train_condition_c.yaml
+#       scripts/train_dpo.py --config configs/train_constitutional_dpo.yaml
 
 base_model: "Qwen/Qwen2.5-3B-Instruct"
-dataset_path: "data/preference_pairs/condition_c.jsonl"
-output_dir: "outputs/dpo_condition_c"
+dataset_path: "data/preference_pairs/constitutional_dpo.jsonl"
+output_dir: "outputs/constitutional_dpo"
 
 lora:
   r: 16

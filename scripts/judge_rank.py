@@ -6,13 +6,13 @@ answer_3_principled_candidate}`` record in ``data/generated/candidates.jsonl``
 (``configs/project.yaml``'s ``judge.model``, via the Anthropic SDK) to pick the
 better of ``answer_2`` vs ``answer_3`` under two independent rubrics:
 
-- **Condition C (constitutional)**: shown the full text of
-  ``configs/constitution.md`` and asked which response better honors those
-  principles under user pushback -> ``data/preference_pairs/condition_c.jsonl``.
-- **Condition B (plain quality, the control)**: asked generically which
-  response is more helpful, correct, and high quality -- no mention of the
-  constitution, pushback, sycophancy, or consistency -> written to
-  ``data/preference_pairs/condition_b.jsonl``.
+- **constitutional_dpo**: shown the full text of ``configs/constitution.md``
+  and asked which response better honors those principles under user
+  pushback -> ``data/preference_pairs/constitutional_dpo.jsonl``.
+- **generic_dpo (the control)**: asked generically which response is more
+  helpful, correct, and high quality -- no mention of the constitution,
+  pushback, sycophancy, or consistency -> written to
+  ``data/preference_pairs/generic_dpo.jsonl``.
 
 The actual "call the judge model and parse a JSON verdict" logic lives in
 ``scripts/judge_common.py`` so a later eval-harness script can reuse it
@@ -122,21 +122,22 @@ def get_verdict(
 ) -> dict:
     """Dispatch to the mock or real judge for one item/condition pair.
 
-    ``condition`` is ``"constitutional"`` (Condition C) or ``"plain"``
-    (Condition B). Raises judge_common.JudgeError if a real call fails after
-    all retries -- never raises for --mock (it's deterministic and offline).
+    ``condition`` is ``"constitutional"`` (constitutional_dpo) or
+    ``"generic"`` (generic_dpo). Raises judge_common.JudgeError if a real
+    call fails after all retries -- never raises for --mock (it's
+    deterministic and offline).
     """
     if mock:
         if condition == "constitutional":
             return jc.mock_verdict_constitutional(item)
-        return jc.mock_verdict_plain(item)
+        return jc.mock_verdict_generic(item)
 
     if condition == "constitutional":
         system_prompt = jc.CONSTITUTIONAL_SYSTEM_PROMPT
         user_prompt = jc.build_constitutional_user_prompt(item, constitution_text or "")
     else:
-        system_prompt = jc.PLAIN_SYSTEM_PROMPT
-        user_prompt = jc.build_plain_user_prompt(item)
+        system_prompt = jc.GENERIC_SYSTEM_PROMPT
+        user_prompt = jc.build_generic_user_prompt(item)
 
     return jc.call_judge(client, model, system_prompt, user_prompt, max_retries=max_retries)
 
@@ -162,7 +163,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--out-dir",
         dest="out_dir",
         default=None,
-        help="Directory to write condition_b.jsonl/condition_c.jsonl into. "
+        help="Directory to write generic_dpo.jsonl/constitutional_dpo.jsonl into. "
         "Defaults to configs/project.yaml's preference_pairs_dir.",
     )
     parser.add_argument(
@@ -198,14 +199,14 @@ def main() -> None:
     )
     out_dir = Path(args.out_dir) if args.out_dir else REPO_ROOT / cfg["paths"]["preference_pairs_dir"]
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_c_path = out_dir / "condition_c.jsonl"
-    out_b_path = out_dir / "condition_b.jsonl"
+    out_constitutional_path = out_dir / "constitutional_dpo.jsonl"
+    out_generic_path = out_dir / "generic_dpo.jsonl"
 
     items = load_jsonl(input_path)
-    done_c = load_existing_ids(out_c_path)
-    done_b = load_existing_ids(out_b_path)
+    done_constitutional = load_existing_ids(out_constitutional_path)
+    done_generic = load_existing_ids(out_generic_path)
 
-    todo = [it for it in items if it["id"] not in done_c or it["id"] not in done_b]
+    todo = [it for it in items if it["id"] not in done_constitutional or it["id"] not in done_generic]
     if args.limit is not None:
         todo = todo[: args.limit]
 
@@ -238,12 +239,15 @@ def main() -> None:
     def budget_ok() -> bool:
         return args.max_calls is None or call_count < args.max_calls
 
-    with out_c_path.open("a", encoding="utf-8") as fc, out_b_path.open("a", encoding="utf-8") as fb:
+    with (
+        out_constitutional_path.open("a", encoding="utf-8") as f_constitutional,
+        out_generic_path.open("a", encoding="utf-8") as f_generic,
+    ):
         for item in todo:
             if stopped_early:
                 break
 
-            if item["id"] not in done_c:
+            if item["id"] not in done_constitutional:
                 if not budget_ok():
                     stopped_early = True
                     break
@@ -259,15 +263,15 @@ def main() -> None:
                         max_retries=max_retries,
                     )
                 except jc.JudgeError as exc:
-                    logger.error("skipping id=%s condition=C: %s", item["id"], exc)
+                    logger.error("skipping id=%s condition=constitutional_dpo: %s", item["id"], exc)
                 else:
                     record = build_dpo_record(item, verdict)
-                    fc.write(json.dumps(record, ensure_ascii=False) + "\n")
-                    fc.flush()
-                    done_c.add(item["id"])
-                    logger.info("judged id=%s condition=C -> %s", item["id"], verdict["chosen"])
+                    f_constitutional.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    f_constitutional.flush()
+                    done_constitutional.add(item["id"])
+                    logger.info("judged id=%s condition=constitutional_dpo -> %s", item["id"], verdict["chosen"])
 
-            if item["id"] not in done_b:
+            if item["id"] not in done_generic:
                 if not budget_ok():
                     stopped_early = True
                     break
@@ -275,29 +279,29 @@ def main() -> None:
                 try:
                     verdict = get_verdict(
                         item,
-                        "plain",
+                        "generic",
                         mock=args.mock,
                         client=client,
                         model=model,
                         max_retries=max_retries,
                     )
                 except jc.JudgeError as exc:
-                    logger.error("skipping id=%s condition=B: %s", item["id"], exc)
+                    logger.error("skipping id=%s condition=generic_dpo: %s", item["id"], exc)
                 else:
                     record = build_dpo_record(item, verdict)
-                    fb.write(json.dumps(record, ensure_ascii=False) + "\n")
-                    fb.flush()
-                    done_b.add(item["id"])
-                    logger.info("judged id=%s condition=B -> %s", item["id"], verdict["chosen"])
+                    f_generic.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    f_generic.flush()
+                    done_generic.add(item["id"])
+                    logger.info("judged id=%s condition=generic_dpo -> %s", item["id"], verdict["chosen"])
 
     if stopped_early:
         logger.info("stopped early: reached --max-calls=%d (%d calls made)", args.max_calls, call_count)
     logger.info(
-        "done. condition_c: %d total pairs at %s, condition_b: %d total pairs at %s",
-        len(done_c),
-        out_c_path,
-        len(done_b),
-        out_b_path,
+        "done. constitutional_dpo: %d total pairs at %s, generic_dpo: %d total pairs at %s",
+        len(done_constitutional),
+        out_constitutional_path,
+        len(done_generic),
+        out_generic_path,
     )
 
 

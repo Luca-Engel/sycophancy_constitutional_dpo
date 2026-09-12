@@ -12,6 +12,7 @@ dependencies = [
     "python-dotenv>=1.2.3",
     "pyyaml>=6.0.3",
     "requests>=2.34.2",
+    "scikit-learn>=1.7.2",
     "tqdm>=4.70.0",
 ]
 
@@ -35,6 +36,8 @@ train = [
 
 [dependency-groups]
 dev = [
+    "ipykernel>=6.30.1",
+    "nbconvert>=7.16.6",
     "pytest>=9.1.1",
     "ruff>=0.16.7",
 ]

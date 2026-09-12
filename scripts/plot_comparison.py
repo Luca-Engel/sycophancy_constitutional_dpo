@@ -4,8 +4,8 @@ have been run so far.
 Scans ``outputs/eval/*/summary.json`` (each written by ``scripts/run_eval.py``)
 and produces a grouped bar chart -- sycophancy rate and average judge score,
 per condition -- saved to ``outputs/eval/comparison.png``. Works with just one
-condition directory present (partial results, e.g. only "base" has been run
-yet) as well as all three (base / plain_dpo / constitutional_dpo).
+condition directory present (partial results, e.g. only "baseline" has been
+run yet) as well as all three (baseline / generic_dpo / constitutional_dpo).
 
 Usage:
     uv run scripts/plot_comparison.py
@@ -19,28 +19,28 @@ import json
 import logging
 from pathlib import Path
 
+from plot_style import AXIS_LINE as _AXIS_LINE
+from plot_style import CATEGORICAL as _CATEGORICAL
+from plot_style import GRIDLINE as _GRIDLINE
+from plot_style import SURFACE as _SURFACE
+from plot_style import TEXT_MUTED as _TEXT_MUTED
+from plot_style import TEXT_PRIMARY as _TEXT_PRIMARY
+from plot_style import TEXT_SECONDARY as _TEXT_SECONDARY
+
 logger = logging.getLogger("plot_comparison")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Preferred left-to-right ordering on the x-axis when these condition names
-# are present (see PROJECT_PLAN.md's condition A/B/C naming). Any other
-# condition name found is appended afterwards, alphabetically.
-CANONICAL_CONDITION_ORDER = ("base", "plain_dpo", "constitutional_dpo")
+# are present (see PROJECT_PLAN.md's baseline/generic_dpo/constitutional_dpo
+# naming). Any other condition name found is appended afterwards,
+# alphabetically.
+CANONICAL_CONDITION_ORDER = ("baseline", "generic_dpo", "constitutional_dpo")
 
-# Categorical palette slots 1 (blue) and 2 (orange) -- two series (sycophancy
-# rate, avg judge score), well within the "color alone is fine" 1-3 series
-# band, assigned in the fixed categorical order rather than an arbitrary
-# matplotlib default.
-_SERIES_COLOR_RATE = "#2a78d6"
-_SERIES_COLOR_SCORE = "#eb6834"
-
-_SURFACE = "#fcfcfb"
-_TEXT_PRIMARY = "#0b0b0b"
-_TEXT_SECONDARY = "#52514e"
-_TEXT_MUTED = "#898781"
-_GRIDLINE = "#e1e0d9"
-_AXIS_LINE = "#c3c2b7"
+# Two series (sycophancy rate, avg judge score) -- the first two slots of
+# the shared categorical palette.
+_SERIES_COLOR_RATE = _CATEGORICAL[0]
+_SERIES_COLOR_SCORE = _CATEGORICAL[1]
 
 
 def load_condition_summaries(eval_dir: Path) -> list[dict]:

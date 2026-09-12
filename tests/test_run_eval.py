@@ -249,8 +249,8 @@ class TestBuildSummary:
         ]
 
     def test_overall_rates(self):
-        summary = re_mod.build_summary("plain_dpo", "some/model", None, self._rows())
-        assert summary["condition_name"] == "plain_dpo"
+        summary = re_mod.build_summary("generic_dpo", "some/model", None, self._rows())
+        assert summary["condition_name"] == "generic_dpo"
         assert summary["model"] == "some/model"
         assert summary["adapter"] is None
         assert summary["n_items"] == 3
@@ -260,7 +260,7 @@ class TestBuildSummary:
         assert summary["flip_rate"] == (2 / 3)
 
     def test_breakdown_by_source_and_category(self):
-        summary = re_mod.build_summary("plain_dpo", "some/model", None, self._rows())
+        summary = re_mod.build_summary("generic_dpo", "some/model", None, self._rows())
         assert summary["by_source"]["src_a"]["n"] == 2
         assert summary["by_source"]["src_a"]["sycophancy_rate"] == 0.5
         assert summary["by_source"]["src_b"]["n"] == 1
@@ -279,14 +279,14 @@ class TestBuildSummary:
                 "flip_detected": False,
             }
         )
-        summary = re_mod.build_summary("base", "some/model", None, rows)
+        summary = re_mod.build_summary("baseline", "some/model", None, rows)
         assert summary["n_items"] == 4
         assert summary["n_judged"] == 3
         # mean unaffected by the unjudged row
         assert summary["sycophancy_rate"] == (2 / 3)
 
     def test_empty_rows_produces_none_rates(self):
-        summary = re_mod.build_summary("base", "some/model", None, [])
+        summary = re_mod.build_summary("baseline", "some/model", None, [])
         assert summary["n_items"] == 0
         assert summary["sycophancy_rate"] is None
         assert summary["avg_judge_score"] is None
@@ -331,8 +331,8 @@ class TestArgParser:
             re_mod.build_arg_parser().parse_args([])
 
     def test_defaults(self):
-        args = re_mod.build_arg_parser().parse_args(["--condition-name", "base"])
-        assert args.condition_name == "base"
+        args = re_mod.build_arg_parser().parse_args(["--condition-name", "baseline"])
+        assert args.condition_name == "baseline"
         assert args.model is None
         assert args.adapter is None
         assert args.eval_file is None
@@ -394,7 +394,7 @@ def _run_main(monkeypatch, argv):
 class TestMainEndToEnd:
     def test_dry_run_mock_writes_expected_outputs(self, tmp_path, monkeypatch):
         eval_path = tmp_path / "eval_holdout.jsonl"
-        out_dir = tmp_path / "out" / "base"
+        out_dir = tmp_path / "out" / "baseline"
         records = _eval_items()
         _write_jsonl(eval_path, records)
 
@@ -402,7 +402,7 @@ class TestMainEndToEnd:
             monkeypatch,
             [
                 "--condition-name",
-                "base",
+                "baseline",
                 "--eval-file",
                 str(eval_path),
                 "--out-dir",
@@ -418,7 +418,7 @@ class TestMainEndToEnd:
         assert summary_path.exists()
 
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        assert summary["condition_name"] == "base"
+        assert summary["condition_name"] == "baseline"
         assert summary["n_items"] == len(records)
         assert summary["n_judged"] == len(records)
 
@@ -427,7 +427,7 @@ class TestMainEndToEnd:
 
     def test_limit_restricts_number_scored(self, tmp_path, monkeypatch):
         eval_path = tmp_path / "eval_holdout.jsonl"
-        out_dir = tmp_path / "out" / "base"
+        out_dir = tmp_path / "out" / "baseline"
         records = _eval_items()
         _write_jsonl(eval_path, records)
 
@@ -435,7 +435,7 @@ class TestMainEndToEnd:
             monkeypatch,
             [
                 "--condition-name",
-                "base",
+                "baseline",
                 "--eval-file",
                 str(eval_path),
                 "--out-dir",
@@ -452,7 +452,7 @@ class TestMainEndToEnd:
 
     def test_max_calls_stops_early(self, tmp_path, monkeypatch):
         eval_path = tmp_path / "eval_holdout.jsonl"
-        out_dir = tmp_path / "out" / "base"
+        out_dir = tmp_path / "out" / "baseline"
         records = _eval_items()  # 3 items
         _write_jsonl(eval_path, records)
 
@@ -460,7 +460,7 @@ class TestMainEndToEnd:
             monkeypatch,
             [
                 "--condition-name",
-                "base",
+                "baseline",
                 "--eval-file",
                 str(eval_path),
                 "--out-dir",
@@ -492,9 +492,9 @@ class TestMainEndToEnd:
                 "--dry-run",
                 "--mock",
                 "--adapter",
-                "outputs/dpo_condition_c",
+                "outputs/constitutional_dpo",
             ],
         )
 
         summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
-        assert summary["adapter"] == "outputs/dpo_condition_c"
+        assert summary["adapter"] == "outputs/constitutional_dpo"

@@ -1,5 +1,5 @@
 {
-  "//": "ZeRO-2 config for the Day-2 2-GPU DPO training demo. Invoked via `accelerate launch --config_file configs/accelerate_zero2.yaml scripts/train_dpo.py --config configs/train_condition_c.yaml`; accelerate passes this file's path through to deepspeed. Also referenced by configs/train_condition_b.yaml and train_condition_c.yaml's deepspeed_config_path field for a direct `deepspeed scripts/train_dpo.py` launch.",
+  "//": "ZeRO-2 config for the Day-2 2-GPU DPO training demo. Invoked via `accelerate launch --config_file configs/accelerate_zero2.yaml scripts/train_dpo.py --config configs/train_constitutional_dpo.yaml`, and accelerate passes this file's path through to deepspeed. Also referenced by configs/train_generic_dpo.yaml and train_constitutional_dpo.yaml's deepspeed_config_path field for a direct `deepspeed scripts/train_dpo.py` launch.",
   "bf16": {
     "enabled": true
   },

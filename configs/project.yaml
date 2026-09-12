@@ -2,8 +2,9 @@
 # Keep this flat and simple -- it's meant to be the one place that pins
 # model names, the judge provider, and the paths every stage reads/writes.
 
-# Base instruction-tuned model that gets DPO-tuned (Conditions B and C) and
-# evaluated untouched (Condition A). Small enough to LoRA-tune cheaply.
+# Base instruction-tuned model that gets DPO-tuned (generic_dpo and
+# constitutional_dpo) and evaluated untouched (baseline). Small enough to
+# LoRA-tune cheaply.
 policy_model: "Qwen/Qwen2.5-3B-Instruct"
 
 # Used instead of policy_model if GPU time/memory runs short.
@@ -33,7 +34,7 @@ paths:
   outputs_dir: "outputs"
   constitution_file: "configs/constitution.md"
 
-# Target size for the AI-feedback preference dataset (per condition B/C).
+# Target size for the AI-feedback preference dataset (per generic_dpo/constitutional_dpo).
 # See PROJECT_PLAN.md section 3 for the reasoning behind this range.
 target_preference_pairs: 400
 

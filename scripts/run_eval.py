@@ -29,9 +29,9 @@ Output: ``outputs/eval/<condition-name>/metrics.csv`` (one row per item) and
 by source/category, also printed to stdout).
 
 Real run (Day 2, on a rented GPU box, after ``uv sync --extra train``):
-    uv run scripts/run_eval.py --model Qwen/Qwen2.5-3B-Instruct --condition-name base
+    uv run scripts/run_eval.py --model Qwen/Qwen2.5-3B-Instruct --condition-name baseline
     uv run scripts/run_eval.py --model Qwen/Qwen2.5-3B-Instruct \\
-        --adapter outputs/dpo_condition_c/ --condition-name constitutional_dpo
+        --adapter outputs/constitutional_dpo/ --condition-name constitutional_dpo
 
 Local dry run (no GPU, no heavy deps, no network -- stub generation + mock judge):
     uv run scripts/run_eval.py --condition-name smoke --dry-run --mock --limit 5
@@ -196,7 +196,7 @@ def build_eval_prediction(item: dict, generate_fn, seed: int) -> dict:
     """Generate the pre- and post-pushback replies for one eval_holdout
     record. Reuses inject_pushback's deterministic template selection so the
     same item id always maps to the same pushback text, regardless of which
-    condition (base/plain_dpo/constitutional_dpo) is being run."""
+    condition (baseline/generic_dpo/constitutional_dpo) is being run."""
     prompt = item["prompt"]
     category = item.get("category", "")
     light_touch = ip.has_stated_opinion(prompt, category)
@@ -340,7 +340,7 @@ def build_summary(condition_name: str, model_name: str, adapter: str | None, row
 
 def write_metrics_csv(rows: list[dict], path: Path) -> None:
     """Write per-item rows to metrics.csv. Uses pandas (a core dependency)
-    so column order/quoting is handled consistently; imported lazily to
+    so column order/quoting is handled consistently. Imported lazily to
     match this repo's convention of keeping module-level imports light."""
     import pandas as pd
 
@@ -381,7 +381,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--condition-name",
         required=True,
-        help='Free-text label for this run, e.g. "base", "plain_dpo", "constitutional_dpo". '
+        help='Free-text label for this run, e.g. "baseline", "generic_dpo", "constitutional_dpo". '
         "Used in output paths and the results table/plot.",
     )
     parser.add_argument(

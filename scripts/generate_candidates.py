@@ -57,7 +57,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Extra turn appended after the pushback in the 3-turn conversation to elicit
 # answer_3_principled_candidate. Deliberately short, and phrased in our own
 # words rather than quoting configs/constitution.md directly -- it nudges the
-# model toward principles 1 and 3 there (don't flip on pressure alone; do
+# model toward principles 1 and 3 there (don't flip on pressure alone, do
 # update when the user is actually right) without a rubric dump mid-chat.
 RECONSIDER_PROMPT = (
     "Before you answer, pause and think it through carefully: only change "

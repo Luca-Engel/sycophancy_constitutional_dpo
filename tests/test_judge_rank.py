@@ -88,21 +88,21 @@ class TestPromptConstruction:
         assert item["answer_2_sycophantic_candidate"] in prompt
         assert item["answer_3_principled_candidate"] in prompt
 
-    def test_plain_prompt_excludes_forbidden_framing_words(self):
+    def test_generic_prompt_excludes_forbidden_framing_words(self):
         item = _candidate_items()[0]
-        prompt = jc.build_plain_user_prompt(item).lower()
+        prompt = jc.build_generic_user_prompt(item).lower()
         for forbidden in ("constitution", "pushback", "sycophan", "consisten"):
             assert forbidden not in prompt
 
-    def test_plain_prompt_is_generic_quality_framing(self):
+    def test_generic_prompt_is_generic_quality_framing(self):
         item = _candidate_items()[0]
-        prompt = jc.build_plain_user_prompt(item).lower()
+        prompt = jc.build_generic_user_prompt(item).lower()
         assert "helpful" in prompt
         assert "quality" in prompt
 
-    def test_plain_prompt_includes_both_candidates(self):
+    def test_generic_prompt_includes_both_candidates(self):
         item = _candidate_items()[0]
-        prompt = jc.build_plain_user_prompt(item)
+        prompt = jc.build_generic_user_prompt(item)
         assert item["answer_2_sycophantic_candidate"] in prompt
         assert item["answer_3_principled_candidate"] in prompt
 
@@ -110,7 +110,7 @@ class TestPromptConstruction:
         item = _candidate_items()[0]
         for prompt in (
             jc.build_constitutional_user_prompt(item, CONSTITUTION_TEXT),
-            jc.build_plain_user_prompt(item),
+            jc.build_generic_user_prompt(item),
         ):
             assert "answer_2" in prompt and "answer_3" in prompt
             assert "json" in prompt.lower()
@@ -193,19 +193,19 @@ class TestMockVerdicts:
         verdict = jc.mock_verdict_constitutional(item)
         assert verdict["chosen"] == "answer_3"
 
-    def test_plain_mock_prefers_longer_answer_2(self):
+    def test_generic_mock_prefers_longer_answer_2(self):
         item = {
             "answer_2_sycophantic_candidate": "a" * 100,
             "answer_3_principled_candidate": "b" * 10,
         }
-        assert jc.mock_verdict_plain(item)["chosen"] == "answer_2"
+        assert jc.mock_verdict_generic(item)["chosen"] == "answer_2"
 
-    def test_plain_mock_prefers_longer_answer_3(self):
+    def test_generic_mock_prefers_longer_answer_3(self):
         item = {
             "answer_2_sycophantic_candidate": "a" * 10,
             "answer_3_principled_candidate": "b" * 100,
         }
-        assert jc.mock_verdict_plain(item)["chosen"] == "answer_3"
+        assert jc.mock_verdict_generic(item)["chosen"] == "answer_3"
 
 
 class TestGetApiKey:
@@ -256,10 +256,10 @@ class TestGetVerdictDispatch:
         verdict = jr.get_verdict(item, "constitutional", mock=True)
         assert verdict == jc.mock_verdict_constitutional(item)
 
-    def test_mock_plain(self):
+    def test_mock_generic(self):
         item = _candidate_items()[0]
-        verdict = jr.get_verdict(item, "plain", mock=True)
-        assert verdict == jc.mock_verdict_plain(item)
+        verdict = jr.get_verdict(item, "generic", mock=True)
+        assert verdict == jc.mock_verdict_generic(item)
 
     def test_real_constitutional_calls_call_judge_with_constitutional_prompts(self, monkeypatch):
         captured = {}
@@ -290,7 +290,7 @@ class TestGetVerdictDispatch:
         assert CONSTITUTION_TEXT in captured["user_prompt"]
         assert captured["max_retries"] == 5
 
-    def test_real_plain_calls_call_judge_with_plain_prompts(self, monkeypatch):
+    def test_real_generic_calls_call_judge_with_generic_prompts(self, monkeypatch):
         captured = {}
 
         def fake_call_judge(client, model, system_prompt, user_prompt, max_retries=3):
@@ -299,8 +299,8 @@ class TestGetVerdictDispatch:
 
         monkeypatch.setattr(jc, "call_judge", fake_call_judge)
         item = _candidate_items()[0]
-        jr.get_verdict(item, "plain", mock=False, client="fake-client", model="fake-model")
-        assert captured["system_prompt"] == jc.PLAIN_SYSTEM_PROMPT
+        jr.get_verdict(item, "generic", mock=False, client="fake-client", model="fake-model")
+        assert captured["system_prompt"] == jc.GENERIC_SYSTEM_PROMPT
         assert "constitution" not in captured["user_prompt"].lower()
 
 
@@ -366,11 +366,11 @@ class TestMainEndToEnd:
             ["--in", str(input_path), "--out", str(out_dir), "--mock"],
         )
 
-        out_c = out_dir / "condition_c.jsonl"
-        out_b = out_dir / "condition_b.jsonl"
-        assert out_c.exists() and out_b.exists()
+        out_constitutional = out_dir / "constitutional_dpo.jsonl"
+        out_generic = out_dir / "generic_dpo.jsonl"
+        assert out_constitutional.exists() and out_generic.exists()
 
-        for path in (out_c, out_b):
+        for path in (out_constitutional, out_generic):
             lines = path.read_text(encoding="utf-8").strip().splitlines()
             assert len(lines) == len(records)
             ids = set()
@@ -392,10 +392,10 @@ class TestMainEndToEnd:
             ["--in", str(input_path), "--out", str(out_dir), "--mock", "--limit", "1"],
         )
 
-        out_c_lines = (out_dir / "condition_c.jsonl").read_text(encoding="utf-8").strip().splitlines()
-        out_b_lines = (out_dir / "condition_b.jsonl").read_text(encoding="utf-8").strip().splitlines()
-        assert len(out_c_lines) == 1
-        assert len(out_b_lines) == 1
+        out_constitutional_lines = (out_dir / "constitutional_dpo.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        out_generic_lines = (out_dir / "generic_dpo.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        assert len(out_constitutional_lines) == 1
+        assert len(out_generic_lines) == 1
 
     def test_max_calls_caps_number_of_mocked_calls(self, tmp_path, monkeypatch):
         input_path = tmp_path / "candidates.jsonl"
@@ -408,11 +408,11 @@ class TestMainEndToEnd:
             ["--in", str(input_path), "--out", str(out_dir), "--mock", "--max-calls", "4"],
         )
 
-        out_c_ids = {json.loads(line)["id"] for line in (out_dir / "condition_c.jsonl").read_text().splitlines()}
-        out_b_ids = {json.loads(line)["id"] for line in (out_dir / "condition_b.jsonl").read_text().splitlines()}
-        # 4 calls = item-1 (C+B) + item-2 (C+B); item-3 untouched in both.
-        assert out_c_ids == {"item-1", "item-2"}
-        assert out_b_ids == {"item-1", "item-2"}
+        out_constitutional_ids = {json.loads(line)["id"] for line in (out_dir / "constitutional_dpo.jsonl").read_text().splitlines()}
+        out_generic_ids = {json.loads(line)["id"] for line in (out_dir / "generic_dpo.jsonl").read_text().splitlines()}
+        # 4 calls = item-1 (constitutional+generic) + item-2 (constitutional+generic). item-3 untouched in both.
+        assert out_constitutional_ids == {"item-1", "item-2"}
+        assert out_generic_ids == {"item-1", "item-2"}
 
     def test_max_calls_one_only_writes_first_item_first_condition(self, tmp_path, monkeypatch):
         input_path = tmp_path / "candidates.jsonl"
@@ -425,11 +425,11 @@ class TestMainEndToEnd:
             ["--in", str(input_path), "--out", str(out_dir), "--mock", "--max-calls", "1"],
         )
 
-        out_c_lines = (out_dir / "condition_c.jsonl").read_text(encoding="utf-8").strip().splitlines()
-        out_b_text = (out_dir / "condition_b.jsonl").read_text(encoding="utf-8").strip()
-        assert len(out_c_lines) == 1
-        assert json.loads(out_c_lines[0])["id"] == "item-1"
-        assert out_b_text == ""
+        out_constitutional_lines = (out_dir / "constitutional_dpo.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        out_generic_text = (out_dir / "generic_dpo.jsonl").read_text(encoding="utf-8").strip()
+        assert len(out_constitutional_lines) == 1
+        assert json.loads(out_constitutional_lines[0])["id"] == "item-1"
+        assert out_generic_text == ""
 
     def test_rerun_is_resumable_per_condition_and_does_not_duplicate(self, tmp_path, monkeypatch):
         input_path = tmp_path / "candidates.jsonl"
@@ -438,12 +438,12 @@ class TestMainEndToEnd:
         records = _candidate_items()
         _write_jsonl(input_path, records)
 
-        # Pre-seed condition_c with item-1 already judged (sentinel reasoning,
-        # so we can tell whether a re-run wrongly re-judges it), but leave
-        # condition_b untouched for item-1.
-        out_c_path = out_dir / "condition_c.jsonl"
+        # Pre-seed constitutional_dpo with item-1 already judged (sentinel
+        # reasoning, so we can tell whether a re-run wrongly re-judges it),
+        # but leave generic_dpo untouched for item-1.
+        out_constitutional_path = out_dir / "constitutional_dpo.jsonl"
         _write_jsonl(
-            out_c_path,
+            out_constitutional_path,
             [
                 {
                     "id": "item-1",
@@ -460,21 +460,21 @@ class TestMainEndToEnd:
             ["--in", str(input_path), "--out", str(out_dir), "--mock"],
         )
 
-        out_c = [json.loads(line) for line in out_c_path.read_text(encoding="utf-8").strip().splitlines()]
-        out_b = [
+        out_constitutional = [json.loads(line) for line in out_constitutional_path.read_text(encoding="utf-8").strip().splitlines()]
+        out_generic = [
             json.loads(line)
-            for line in (out_dir / "condition_b.jsonl").read_text(encoding="utf-8").strip().splitlines()
+            for line in (out_dir / "generic_dpo.jsonl").read_text(encoding="utf-8").strip().splitlines()
         ]
 
-        # No duplicates, all ids present in both, pre-existing item-1 C entry untouched.
-        c_ids = [r["id"] for r in out_c]
-        b_ids = [r["id"] for r in out_b]
-        assert len(c_ids) == len(set(c_ids)) == len(records)
-        assert len(b_ids) == len(set(b_ids)) == len(records)
-        assert set(c_ids) == set(b_ids) == {r["id"] for r in records}
+        # No duplicates, all ids present in both, pre-existing item-1 constitutional entry untouched.
+        constitutional_ids = [r["id"] for r in out_constitutional]
+        generic_ids = [r["id"] for r in out_generic]
+        assert len(constitutional_ids) == len(set(constitutional_ids)) == len(records)
+        assert len(generic_ids) == len(set(generic_ids)) == len(records)
+        assert set(constitutional_ids) == set(generic_ids) == {r["id"] for r in records}
 
-        item_1_c = next(r for r in out_c if r["id"] == "item-1")
-        assert item_1_c["chosen"] == "PRE_EXISTING_SENTINEL"
+        item_1_constitutional = next(r for r in out_constitutional if r["id"] == "item-1")
+        assert item_1_constitutional["chosen"] == "PRE_EXISTING_SENTINEL"
 
-        item_1_b = next(r for r in out_b if r["id"] == "item-1")
-        assert item_1_b["chosen"] != "PRE_EXISTING_SENTINEL"
+        item_1_generic = next(r for r in out_generic if r["id"] == "item-1")
+        assert item_1_generic["chosen"] != "PRE_EXISTING_SENTINEL"

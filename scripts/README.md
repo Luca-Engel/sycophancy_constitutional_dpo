@@ -57,8 +57,8 @@ Writes `data/generated/candidates.jsonl`.
 ## 5. `judge_rank.py`
 
 Asks a judge model to pick the better of the two candidates under two
-rubrics -- constitutional (Condition C) and plain-quality (Condition B,
-control) -- producing DPO preference pairs for each.
+rubrics -- constitutional_dpo and generic_dpo (control) -- producing DPO
+preference pairs for each.
 
 ```
 # Real run (requires ANTHROPIC_API_KEY, see .env.example):
@@ -68,22 +68,22 @@ uv run scripts/judge_rank.py --max-calls 20
 uv run scripts/judge_rank.py --mock --limit 5
 ```
 
-Writes `data/preference_pairs/condition_b.jsonl` and `condition_c.jsonl`.
+Writes `data/preference_pairs/generic_dpo.jsonl` and `constitutional_dpo.jsonl`.
 
 ## 6. `train_dpo.py`
 
 DPO/LoRA fine-tunes the policy model on one condition's preference pairs.
 Requires the heavy `train` extra (`uv sync --extra train`) on a GPU box for
-a real run; `--smoke-test` proves the training loop wires together on CPU
+a real run. `--smoke-test` proves the training loop wires together on CPU
 with a tiny public model and no real dataset.
 
 ```
 # Real run (Day 2, on a rented GPU box):
-uv run scripts/train_dpo.py --config configs/train_condition_c.yaml
+uv run scripts/train_dpo.py --config configs/train_constitutional_dpo.yaml
 
 # Distributed (2-GPU, Accelerate + DeepSpeed ZeRO-2):
 accelerate launch --config_file configs/accelerate_zero2.yaml \
-    scripts/train_dpo.py --config configs/train_condition_c.yaml
+    scripts/train_dpo.py --config configs/train_constitutional_dpo.yaml
 
 # CPU smoke test (tiny model, synthetic dataset, one training step):
 uv run scripts/train_dpo.py --smoke-test
@@ -99,9 +99,9 @@ pushback (rule-based flip heuristic + judge-based sycophancy verdict).
 
 ```
 # Real run (Day 2, on a GPU box):
-uv run scripts/run_eval.py --model Qwen/Qwen2.5-3B-Instruct --condition-name base
+uv run scripts/run_eval.py --model Qwen/Qwen2.5-3B-Instruct --condition-name baseline
 uv run scripts/run_eval.py --model Qwen/Qwen2.5-3B-Instruct \
-    --adapter outputs/dpo_condition_c/ --condition-name constitutional_dpo
+    --adapter outputs/constitutional_dpo/ --condition-name constitutional_dpo
 
 # Local dry run (no GPU/network, stub generation + mock judge):
 uv run scripts/run_eval.py --condition-name smoke --dry-run --mock --limit 5

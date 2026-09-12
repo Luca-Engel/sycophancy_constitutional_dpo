@@ -4,7 +4,7 @@
 #
 # Invoke with:
 #   accelerate launch --config_file configs/accelerate_zero2.yaml \
-#       scripts/train_dpo.py --config configs/train_condition_c.yaml
+#       scripts/train_dpo.py --config configs/train_constitutional_dpo.yaml
 #
 # (set use_deepspeed: true in the training config too, so train_dpo.py passes
 # the deepspeed config path through to TrainingArguments)

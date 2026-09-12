@@ -1,20 +1,21 @@
-# DPO/LoRA training config -- Condition B (plain-preference control).
+# DPO/LoRA training config -- generic_dpo (plain-preference control).
 #
-# Trains on data/preference_pairs/condition_b.jsonl, where the judge picked
+# Trains on data/preference_pairs/generic_dpo.jsonl, where the judge picked
 # the winning response on generic helpfulness/correctness alone -- no
 # constitution, no pushback/sycophancy framing. Identical hyperparameters to
-# configs/train_condition_c.yaml so that any eval difference between B and C
-# isolates the *constitutional* signal, not a confound from training setup.
+# configs/train_constitutional_dpo.yaml so that any eval difference between
+# generic_dpo and constitutional_dpo isolates the *constitutional* signal,
+# not a confound from training setup.
 #
 # Run (Day 2, on a rented GPU box, after `uv sync --extra train`):
-#   uv run scripts/train_dpo.py --config configs/train_condition_b.yaml
+#   uv run scripts/train_dpo.py --config configs/train_generic_dpo.yaml
 #
 # Local smoke test (tiny model, tiny synthetic data, 1 step, no GPU):
-#   uv run scripts/train_dpo.py --config configs/train_condition_b.yaml --smoke-test
+#   uv run scripts/train_dpo.py --config configs/train_generic_dpo.yaml --smoke-test
 
 base_model: "Qwen/Qwen2.5-3B-Instruct"
-dataset_path: "data/preference_pairs/condition_b.jsonl"
-output_dir: "outputs/dpo_condition_b"
+dataset_path: "data/preference_pairs/generic_dpo.jsonl"
+output_dir: "outputs/generic_dpo"
 
 lora:
   r: 16
@@ -31,7 +32,7 @@ beta: 0.1
 precision: "bf16"
 
 # Set use_deepspeed: true and launch via
-# `accelerate launch --config_file configs/accelerate_zero2.yaml scripts/train_dpo.py --config configs/train_condition_b.yaml`
+# `accelerate launch --config_file configs/accelerate_zero2.yaml scripts/train_dpo.py --config configs/train_generic_dpo.yaml`
 # for the 2-GPU ZeRO-2 demo. Left off by default for a single-GPU run.
 use_deepspeed: false
 deepspeed_config_path: "configs/deepspeed_zero2.json"

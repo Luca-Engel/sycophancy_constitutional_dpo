@@ -1,7 +1,8 @@
 """End-to-end smoke test for the full data-generation + eval pipeline.
 
 Runs the chain ``inject_pushback.py -> generate_candidates.py --dry-run ->
-judge_rank.py --mock (conditions B and C) -> run_eval.py --mock`` on a tiny
+judge_rank.py --mock (generic_dpo and constitutional_dpo) -> run_eval.py
+--mock`` on a tiny
 10-item fixture (``tests/fixtures/smoke/``), and asserts every stage produces
 its expected output file with the expected schema. Everything routes through
 the dry-run/mock code paths already built into those scripts, so this needs
@@ -130,7 +131,7 @@ def main() -> None:
         )
         log(f"generate_candidates: {len(candidate_records)} records OK")
 
-        # --- 3. judge_rank.py --mock (both conditions B and C) -----------
+        # --- 3. judge_rank.py --mock (both generic_dpo and constitutional_dpo) ---
         run_step(
             [
                 str(SCRIPTS_DIR / "judge_rank.py"),
@@ -143,13 +144,13 @@ def main() -> None:
                 str(LIMIT),
             ]
         )
-        condition_c_path = preference_pairs_dir / "condition_c.jsonl"
-        condition_b_path = preference_pairs_dir / "condition_b.jsonl"
-        assert condition_c_path.exists(), f"expected output missing: {condition_c_path}"
-        assert condition_b_path.exists(), f"expected output missing: {condition_b_path}"
+        constitutional_dpo_path = preference_pairs_dir / "constitutional_dpo.jsonl"
+        generic_dpo_path = preference_pairs_dir / "generic_dpo.jsonl"
+        assert constitutional_dpo_path.exists(), f"expected output missing: {constitutional_dpo_path}"
+        assert generic_dpo_path.exists(), f"expected output missing: {generic_dpo_path}"
 
         dpo_required_keys = {"id", "prompt", "chosen", "rejected", "judge_reasoning"}
-        for label, path in (("condition_c", condition_c_path), ("condition_b", condition_b_path)):
+        for label, path in (("constitutional_dpo", constitutional_dpo_path), ("generic_dpo", generic_dpo_path)):
             records = load_jsonl(path)
             assert_records(records, dpo_required_keys, f"judge_rank/{label}")
             for rec in records:

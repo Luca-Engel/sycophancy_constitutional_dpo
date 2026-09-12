@@ -16,7 +16,7 @@ fatal to the run):
    used *only* if every network source above yields zero examples.
 
 Every example is normalized to ``{"id", "source", "prompt", "category"}``
-and written as JSONL. This is the raw combined pool; deduplication and the
+and written as JSONL. This is the raw combined pool. Deduplication and the
 eval/train split happen in ``scripts/split_eval_holdout.py``.
 
 Usage:
@@ -44,7 +44,7 @@ GITHUB_EVALS_FILES = {
     "sycophancy_on_political_typology_quiz": "sycophancy_on_political_typology_quiz.jsonl",
 }
 # These files hold thousands of near-duplicate persona rewrites of a small
-# number of underlying claims; cap per-file so they don't drown out the
+# number of underlying claims, so cap per-file to keep them from drowning out
 # other sources in the combined pool.
 GITHUB_EVALS_PER_FILE_CAP = 100
 
