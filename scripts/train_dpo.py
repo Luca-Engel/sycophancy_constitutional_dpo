@@ -339,7 +339,28 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Override the config (or run standalone, if --config is omitted) with a tiny "
         "public model, an in-memory synthetic preference dataset, and a single training "
-        "step -- proves the training loop wires together without a GPU or real data.",
+        "step -- proves the training loop wires together without a GPU or real data. Does "
+        "NOT exercise the real base model, its real LoRA target module names, or the real "
+        "dataset file -- for that, use --config with --max-steps on the actual GPU box "
+        "instead (see --max-steps' help).",
+    )
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=None,
+        help="Override the config's max_steps. Lets you smoke-test the REAL base model, "
+        "LoRA config, and dataset file end to end on the real GPU (catches an invalid "
+        "target_modules name, a dataset schema issue, or an OOM at the configured batch "
+        "size) in a couple minutes instead of the full run, e.g.: --config "
+        "configs/train_generic_dpo.yaml --max-steps 2 --output-dir outputs/smoke_generic_dpo "
+        "-- pair with --output-dir so the tiny smoke adapter doesn't overwrite the real one.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Override the config's output_dir. Mainly useful with --max-steps, so a smoke "
+        "run's throwaway adapter doesn't get saved over the real training run's output.",
     )
     return parser
 
@@ -359,6 +380,11 @@ def main() -> None:
 
     if args.smoke_test:
         cfg = apply_smoke_test_overrides(cfg)
+
+    if args.max_steps is not None:
+        cfg["max_steps"] = args.max_steps
+    if args.output_dir is not None:
+        cfg["output_dir"] = args.output_dir
 
     validate_config(cfg)
     run_training(cfg, smoke_test=args.smoke_test)

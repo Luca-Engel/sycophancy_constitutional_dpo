@@ -217,6 +217,18 @@ class TestArgParser:
         assert args.config == "configs/train_constitutional_dpo.yaml"
         assert args.smoke_test is False
 
+    def test_max_steps_and_output_dir_default_to_none(self):
+        args = td.build_arg_parser().parse_args(["--config", "configs/train_constitutional_dpo.yaml"])
+        assert args.max_steps is None
+        assert args.output_dir is None
+
+    def test_max_steps_and_output_dir_parse(self):
+        args = td.build_arg_parser().parse_args(
+            ["--config", "configs/train_generic_dpo.yaml", "--max-steps", "2", "--output-dir", "outputs/smoke"]
+        )
+        assert args.max_steps == 2
+        assert args.output_dir == "outputs/smoke"
+
 
 class TestSmokeTestTrainingLoop:
     """Exercises the real model-load -> LoRA wrap -> DPOTrainer -> one

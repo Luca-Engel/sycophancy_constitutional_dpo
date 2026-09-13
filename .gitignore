@@ -21,3 +21,4 @@ outputs/*
 # Experiment tracking / logs
 wandb/
 *.log
+/tmp.md

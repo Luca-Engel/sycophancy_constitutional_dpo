@@ -1,11 +1,14 @@
 # DPO/LoRA training config -- generic_dpo (plain-preference control).
 #
-# Trains on data/preference_pairs/generic_dpo.jsonl, where the judge picked
-# the winning response on generic helpfulness/correctness alone -- no
-# constitution, no pushback/sycophancy framing. Identical hyperparameters to
-# configs/train_constitutional_dpo.yaml so that any eval difference between
-# generic_dpo and constitutional_dpo isolates the *constitutional* signal,
-# not a confound from training setup.
+# Trains on data/preference_pairs_clean/generic_dpo.jsonl (see
+# scripts/filter_preference_pairs.py / that directory's MANIFEST.md: 3
+# items excluded, identically from both conditions, for a chosen completion
+# that was a confirmed catastrophic repetition loop rather than a real
+# answer), where the judge picked the winning response on generic
+# helpfulness/correctness alone -- no constitution, no pushback/sycophancy
+# framing. Identical hyperparameters to configs/train_constitutional_dpo.yaml
+# so that any eval difference between generic_dpo and constitutional_dpo
+# isolates the *constitutional* signal, not a confound from training setup.
 #
 # Run (Day 2, on a rented GPU box, after `uv sync --extra train`):
 #   uv run scripts/train_dpo.py --config configs/train_generic_dpo.yaml
@@ -14,7 +17,7 @@
 #   uv run scripts/train_dpo.py --config configs/train_generic_dpo.yaml --smoke-test
 
 base_model: "Qwen/Qwen3-4B-Instruct-2507"
-dataset_path: "data/preference_pairs/generic_dpo.jsonl"
+dataset_path: "data/preference_pairs_clean/generic_dpo.jsonl"
 output_dir: "outputs/generic_dpo"
 
 lora:
