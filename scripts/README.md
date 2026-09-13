@@ -50,9 +50,25 @@ uv run scripts/generate_candidates.py
 
 # Local dry run (no GPU/network, deterministic stub generator):
 uv run scripts/generate_candidates.py --dry-run --limit 5
+
+# Small exploratory subset via a hosted endpoint, no local torch/transformers
+# install and no GPU rental needed (HF_TOKEN required, see .env.example):
+uv run scripts/generate_candidates.py --limit 25 \
+    --endpoint-url https://router.huggingface.co \
+    --endpoint-model Qwen/Qwen3-4B-Instruct-2507 \
+    --out data/generated/candidates_diagnostic.jsonl
 ```
 
 Writes `data/generated/candidates.jsonl`.
+
+`--endpoint-url` swaps the generation backend for an OpenAI-chat-compatible
+HTTP call (`policy_model_common.generate_via_http_endpoint`) instead of
+loading the model locally. Works against Hugging Face's serverless
+Inference Providers router (pass `--endpoint-model` too, since the router
+serves many models) or a dedicated HF Inference Endpoint URL you deployed
+yourself (omit `--endpoint-model`, it's already bound to one model -- and
+remember it bills per minute while running, so pause/delete it when done).
+Useful for a quick, small, real-model diagnostic run from a plain laptop.
 
 ## 5. `judge_rank.py`
 
@@ -99,6 +115,30 @@ printed to stdout as a summary). Run this once after a real `judge_rank.py`
 run (or on a partial `candidates.jsonl`) before trusting the resulting
 preference-pair dataset.
 
+## 5c. `check_condition_agreement.py`
+
+Diagnostic for a different confound than 5b's (position bias): how often
+generic_dpo and constitutional_dpo already pick the *same* underlying
+candidate for the same item, despite using different rubrics. Both
+conditions choose between the same `answer_2`/`answer_3` pair, and
+`answer_3`'s elicitation instruction (see `generate_candidates.py`'s
+`RECONSIDER_PROMPT`) already nudges toward traits -- directness, not
+hedging -- a generic quality judge likely rewards too, independent of the
+constitution. A high agreement rate here means generic_dpo isn't the clean,
+constitution-free control it's meant to be. Read-only: compares the
+`chosen` text in two existing `judge_rank.py` output files, no new judge or
+policy-model calls.
+
+```
+uv run scripts/check_condition_agreement.py
+uv run scripts/check_condition_agreement.py \
+    --generic data/preference_pairs/generic_dpo.jsonl \
+    --constitutional data/preference_pairs/constitutional_dpo.jsonl
+```
+
+Writes a report to `outputs/eval/condition_agreement_check.json` (summary
+also printed to stdout).
+
 ## 6. `train_dpo.py`
 
 DPO/LoRA fine-tunes the policy model on one condition's preference pairs.
@@ -128,8 +168,8 @@ pushback (rule-based flip heuristic + judge-based sycophancy verdict).
 
 ```
 # Real run (Day 2, on a GPU box):
-uv run scripts/run_eval.py --model Qwen/Qwen2.5-3B-Instruct --condition-name baseline
-uv run scripts/run_eval.py --model Qwen/Qwen2.5-3B-Instruct \
+uv run scripts/run_eval.py --model Qwen/Qwen3-4B-Instruct-2507 --condition-name baseline
+uv run scripts/run_eval.py --model Qwen/Qwen3-4B-Instruct-2507 \
     --adapter outputs/constitutional_dpo/ --condition-name constitutional_dpo
 
 # Local dry run (no GPU/network, stub generation + mock judge):

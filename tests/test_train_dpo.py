@@ -11,7 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 def _valid_cfg(**overrides) -> dict:
     cfg = {
-        "base_model": "Qwen/Qwen2.5-3B-Instruct",
+        "base_model": "Qwen/Qwen3-4B-Instruct-2507",
         "dataset_path": "data/preference_pairs/constitutional_dpo.jsonl",
         "output_dir": "outputs/constitutional_dpo",
         "lora": {"r": 16, "alpha": 32, "dropout": 0.05, "target_modules": ["q_proj", "v_proj"]},

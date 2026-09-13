@@ -18,7 +18,7 @@
 #   accelerate launch --config_file configs/accelerate_zero2.yaml \
 #       scripts/train_dpo.py --config configs/train_constitutional_dpo.yaml
 
-base_model: "Qwen/Qwen2.5-3B-Instruct"
+base_model: "Qwen/Qwen3-4B-Instruct-2507"
 dataset_path: "data/preference_pairs/constitutional_dpo.jsonl"
 output_dir: "outputs/constitutional_dpo"
 

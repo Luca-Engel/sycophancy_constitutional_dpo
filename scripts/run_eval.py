@@ -29,8 +29,8 @@ Output: ``outputs/eval/<condition-name>/metrics.csv`` (one row per item) and
 by source/category, also printed to stdout).
 
 Real run (Day 2, on a rented GPU box, after ``uv sync --extra train``):
-    uv run scripts/run_eval.py --model Qwen/Qwen2.5-3B-Instruct --condition-name baseline
-    uv run scripts/run_eval.py --model Qwen/Qwen2.5-3B-Instruct \\
+    uv run scripts/run_eval.py --model Qwen/Qwen3-4B-Instruct-2507 --condition-name baseline
+    uv run scripts/run_eval.py --model Qwen/Qwen3-4B-Instruct-2507 \\
         --adapter outputs/constitutional_dpo/ --condition-name constitutional_dpo
 
 Local dry run (no GPU, no heavy deps, no network -- stub generation + mock judge):
@@ -40,15 +40,23 @@ Local dry run (no GPU, no heavy deps, no network -- stub generation + mock judge
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import logging
 import re
 import statistics
 from pathlib import Path
 
+from tqdm import tqdm
+
 import inject_pushback as ip
 import judge_common as jc
-from policy_model_common import dry_run_generate, generate_reply, load_policy_model
+from policy_model_common import (
+    dry_run_generate,
+    generate_reply,
+    load_policy_model,
+    looks_truncated,
+)
 
 logger = logging.getLogger("run_eval")
 
@@ -140,6 +148,21 @@ def detect_answer_flip(answer_1: str, answer_2: str) -> dict:
 # --- Per-item pipeline ----------------------------------------------------
 
 
+def _warn_if_truncated(item_id: str, field_name: str, text: str) -> None:
+    """Log a warning if ``text`` looks cut off before a natural stopping
+    point -- see generate_candidates.py's identical helper and
+    policy_model_common.looks_truncated for why this exists. Never alters
+    or drops ``text``, just surfaces the problem in the run's logs."""
+    if looks_truncated(text):
+        logger.warning(
+            "id=%s: %s looks truncated (%d chars, no sentence-ending punctuation) -- "
+            "consider raising candidate_generation.max_new_tokens in configs/project.yaml",
+            item_id,
+            field_name,
+            len(text),
+        )
+
+
 def build_eval_prediction(item: dict, generate_fn, seed: int) -> dict:
     """Generate the pre- and post-pushback replies for one eval_holdout
     record. Reuses inject_pushback's deterministic template selection so the
@@ -153,12 +176,14 @@ def build_eval_prediction(item: dict, generate_fn, seed: int) -> dict:
 
     turn_1 = [{"role": "user", "content": prompt}]
     answer_1 = generate_fn(turn_1)
+    _warn_if_truncated(item["id"], "answer_1", answer_1)
 
     turn_2 = turn_1 + [
         {"role": "assistant", "content": answer_1},
         {"role": "user", "content": pushback_text},
     ]
     answer_2 = generate_fn(turn_2)
+    _warn_if_truncated(item["id"], "answer_2_post_pushback", answer_2)
 
     return {
         "id": item["id"],
@@ -198,6 +223,25 @@ def get_sycophancy_verdict(
     )
 
 
+def build_scored_row(item: dict, generate_fn, seed: int) -> dict:
+    """Generate both replies and run the rule-based flip heuristic (the
+    non-judge half of score_item's pipeline) -- no judge call, no network.
+    Split out from score_item so a caller (main()'s two-phase pipeline) can
+    run this sequentially against a single local model/GPU while still
+    judging the results concurrently."""
+    prediction = build_eval_prediction(item, generate_fn, seed)
+    flip = detect_answer_flip(prediction["answer_1"], prediction["answer_2_post_pushback"])
+    return {
+        **prediction,
+        "flip_detected": flip["flipped"],
+        "flip_method": flip["method"],
+        "flip_confidence": flip["confidence"],
+        "judge_sycophantic": None,
+        "judge_score": None,
+        "judge_reasoning": "",
+    }
+
+
 def score_item(
     item: dict,
     generate_fn,
@@ -213,22 +257,11 @@ def score_item(
     are caught and leave the judge_* fields as None rather than aborting the
     whole eval run -- callers should log and continue, same pattern as
     scripts/judge_rank.py."""
-    prediction = build_eval_prediction(item, generate_fn, seed)
-    flip = detect_answer_flip(prediction["answer_1"], prediction["answer_2_post_pushback"])
-
-    row = {
-        **prediction,
-        "flip_detected": flip["flipped"],
-        "flip_method": flip["method"],
-        "flip_confidence": flip["confidence"],
-        "judge_sycophantic": None,
-        "judge_score": None,
-        "judge_reasoning": "",
-    }
+    row = build_scored_row(item, generate_fn, seed)
 
     try:
         verdict = get_sycophancy_verdict(
-            prediction,
+            row,
             mock=mock_judge,
             client=judge_client,
             model=judge_model,
@@ -373,6 +406,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Use a deterministic fake judge instead of calling the real API. No network access.",
     )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        help="Number of judge calls to run in parallel during the scoring phase. Only affects the "
+        "judge step -- reply generation always runs sequentially first, one item at a time, since "
+        "--model loads a single local model instance on one GPU that concurrent generate() calls "
+        "would not meaningfully speed up (and could corrupt). Bound this by your Anthropic "
+        "rate-limit tier (requests-per-minute); too high just trades speedup for 429 retries.",
+    )
     return parser
 
 
@@ -424,27 +467,77 @@ def main() -> None:
         judge_client = jc.build_anthropic_client(api_key)
         judge_model = cfg["judge"]["model"]
 
+    items_to_process = items if args.max_calls is None else items[: args.max_calls]
+    if args.max_calls is not None and len(items) > args.max_calls:
+        logger.info("stopping at --max-calls=%d (%d items would otherwise be scored)", args.max_calls, len(items))
+
+    # Phase 1: generate both replies + the rule-based flip check for every
+    # item, always sequentially -- generate_fn is a single local model
+    # instance on one GPU (or the dry-run stub), so there is no real
+    # parallel capacity to exploit here, only lock contention or worse.
     rows = []
-    for i, item in enumerate(items):
-        if args.max_calls is not None and i >= args.max_calls:
-            logger.info("stopped early: reached --max-calls=%d", args.max_calls)
-            break
-        row = score_item(
-            item,
-            generate_fn,
-            seed=seed,
-            mock_judge=args.mock,
-            judge_client=judge_client,
-            judge_model=judge_model,
-            judge_max_retries=judge_max_retries,
+    for item in tqdm(items_to_process, desc=f"generating {args.condition_name}", unit="item"):
+        prediction = build_eval_prediction(item, generate_fn, seed)
+        flip = detect_answer_flip(prediction["answer_1"], prediction["answer_2_post_pushback"])
+        rows.append(
+            {
+                **prediction,
+                "flip_detected": flip["flipped"],
+                "flip_method": flip["method"],
+                "flip_confidence": flip["confidence"],
+                "judge_sycophantic": None,
+                "judge_score": None,
+                "judge_reasoning": "",
+            }
         )
-        rows.append(row)
-        logger.info(
+
+    # Phase 2: judge each generated pair. This hits the Anthropic API, not
+    # the GPU, so it's the phase --concurrency actually parallelizes.
+    def run_judge(row: dict) -> dict:
+        return get_sycophancy_verdict(
+            row,
+            mock=args.mock,
+            client=judge_client,
+            model=judge_model,
+            max_retries=judge_max_retries,
+        )
+
+    def apply_verdict(row: dict, verdict: dict) -> None:
+        row["judge_sycophantic"] = verdict["sycophantic"]
+        row["judge_score"] = verdict["score"]
+        row["judge_reasoning"] = verdict["reasoning"]
+        logger.debug(
             "scored id=%s: flip=%s judge_sycophantic=%s",
-            item["id"],
+            row["id"],
             row["flip_detected"],
             row["judge_sycophantic"],
         )
+
+    if args.concurrency <= 1:
+        for row in tqdm(rows, desc=f"judging {args.condition_name}", unit="item"):
+            try:
+                verdict = run_judge(row)
+            except jc.JudgeError as exc:
+                logger.error("judge failed for id=%s, leaving judge fields blank: %s", row["id"], exc)
+                continue
+            apply_verdict(row, verdict)
+    else:
+        logger.info("judging with %d concurrent workers", args.concurrency)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency) as executor:
+            futures = {executor.submit(run_judge, row): row for row in rows}
+            for future in tqdm(
+                concurrent.futures.as_completed(futures),
+                total=len(futures),
+                desc=f"judging {args.condition_name}",
+                unit="item",
+            ):
+                row = futures[future]
+                try:
+                    verdict = future.result()
+                except jc.JudgeError as exc:
+                    logger.error("judge failed for id=%s, leaving judge fields blank: %s", row["id"], exc)
+                    continue
+                apply_verdict(row, verdict)
 
     metrics_path = out_dir / "metrics.csv"
     write_metrics_csv(rows, metrics_path)

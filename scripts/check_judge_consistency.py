@@ -33,10 +33,13 @@ Real run (small, cheap sample):
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import logging
 import random
 from pathlib import Path
+
+from tqdm import tqdm
 
 import judge_common as jc
 import judge_rank as jr
@@ -201,6 +204,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Use a deterministic fake judge instead of calling the real API. No network access.",
     )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        help="Number of (item, condition) checks to run in parallel -- each is 2 judge calls "
+        "(actual + flipped slots), still made sequentially within one check. Bound this by your "
+        "Anthropic rate-limit tier (requests-per-minute); too high just trades speedup for 429 "
+        "retries.",
+    )
     return parser
 
 
@@ -244,41 +256,73 @@ def main() -> None:
         model = judge_cfg["model"]
         constitution_text = jc.load_constitution(REPO_ROOT / cfg["paths"]["constitution_file"])
 
+    # Each (item, condition) pair is 2 judge calls (actual + flipped slots),
+    # made sequentially inside check_item_consistency -- but the pairs
+    # themselves are all independent, so they're the unit of concurrency.
+    tasks = [(item, condition) for item in sample for condition in conditions]
+    max_checks = None if args.max_calls is None else args.max_calls // 2
+    if max_checks is not None and len(tasks) > max_checks:
+        logger.info(
+            "stopping at --max-calls=%d (%d checks / %d calls would otherwise be made)",
+            args.max_calls,
+            len(tasks),
+            len(tasks) * 2,
+        )
+        tasks = tasks[:max_checks]
+
+    def run_task(task: tuple[dict, str]) -> dict:
+        item, condition = task
+        return check_item_consistency(
+            item,
+            condition,
+            seed,
+            mock=args.mock,
+            client=client,
+            model=model,
+            constitution_text=constitution_text,
+            max_retries=max_retries,
+        )
+
+    def log_result(result: dict) -> None:
+        logger.debug(
+            "id=%s condition=%s actual=%s flipped=%s consistent=%s",
+            result["id"],
+            result["condition"],
+            result["actual_chosen_role"],
+            result["flipped_chosen_role"],
+            result["consistent"],
+        )
+
     results = []
-    call_count = 0
-    stopped_early = False
-    for item in sample:
-        if stopped_early:
-            break
-        for condition in conditions:
-            if args.max_calls is not None and call_count + 2 > args.max_calls:
-                logger.info("stopped early: reached --max-calls=%d", args.max_calls)
-                stopped_early = True
-                break
+    if args.concurrency <= 1:
+        for task in tqdm(tasks, desc="checking consistency", unit="check"):
+            item, condition = task
             try:
-                result = check_item_consistency(
-                    item,
-                    condition,
-                    seed,
-                    mock=args.mock,
-                    client=client,
-                    model=model,
-                    constitution_text=constitution_text,
-                    max_retries=max_retries,
-                )
+                result = run_task(task)
             except jc.JudgeError as exc:
                 logger.error("skipping id=%s condition=%s: %s", item["id"], condition, exc)
                 continue
-            call_count += 2
             results.append(result)
-            logger.info(
-                "id=%s condition=%s actual=%s flipped=%s consistent=%s",
-                item["id"],
-                condition,
-                result["actual_chosen_role"],
-                result["flipped_chosen_role"],
-                result["consistent"],
-            )
+            log_result(result)
+    else:
+        logger.info("checking with %d concurrent workers", args.concurrency)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency) as executor:
+            futures = {executor.submit(run_task, task): task for task in tasks}
+            for future in tqdm(
+                concurrent.futures.as_completed(futures),
+                total=len(futures),
+                desc="checking consistency",
+                unit="check",
+            ):
+                task = futures[future]
+                item, condition = task
+                try:
+                    result = future.result()
+                except jc.JudgeError as exc:
+                    logger.error("skipping id=%s condition=%s: %s", item["id"], condition, exc)
+                    continue
+                results.append(result)
+                log_result(result)
 
     summary = summarize(results)
 

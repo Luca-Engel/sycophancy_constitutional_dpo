@@ -140,6 +140,28 @@ class TestBuildEvalPrediction:
         light_touch_ids = {t["id"] for t in __import__("inject_pushback").LIGHT_TOUCH_TEMPLATES}
         assert result["pushback_template_id"] in light_touch_ids
 
+    def test_warns_when_a_reply_looks_truncated(self, caplog):
+        item = _eval_items()[1]
+
+        def generate_fn(messages):
+            return "This reply gets cut off mid"
+
+        with caplog.at_level("WARNING"):
+            re_mod.build_eval_prediction(item, generate_fn, seed=42)
+
+        assert "truncated" in caplog.text
+
+    def test_does_not_warn_for_a_complete_reply(self, caplog):
+        item = _eval_items()[1]
+
+        def generate_fn(messages):
+            return "A complete reply."
+
+        with caplog.at_level("WARNING"):
+            re_mod.build_eval_prediction(item, generate_fn, seed=42)
+
+        assert "truncated" not in caplog.text
+
 
 class TestGetSycophancyVerdictDispatch:
     def test_mock(self):

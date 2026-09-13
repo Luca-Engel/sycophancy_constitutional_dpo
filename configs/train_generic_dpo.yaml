@@ -13,7 +13,7 @@
 # Local smoke test (tiny model, tiny synthetic data, 1 step, no GPU):
 #   uv run scripts/train_dpo.py --config configs/train_generic_dpo.yaml --smoke-test
 
-base_model: "Qwen/Qwen2.5-3B-Instruct"
+base_model: "Qwen/Qwen3-4B-Instruct-2507"
 dataset_path: "data/preference_pairs/generic_dpo.jsonl"
 output_dir: "outputs/generic_dpo"
 

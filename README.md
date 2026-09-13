@@ -66,7 +66,7 @@ uv run scripts/inject_pushback.py              # -> data/generated/pushback_prom
 uv run scripts/generate_candidates.py          # -> data/generated/candidates.jsonl (needs GPU/train extra, though --dry-run works without one)
 uv run scripts/judge_rank.py --max-calls 20    # -> data/preference_pairs/{generic,constitutional}_dpo.jsonl (needs ANTHROPIC_API_KEY, though --mock works without one)
 uv run scripts/train_dpo.py --config configs/train_constitutional_dpo.yaml   # -> outputs/constitutional_dpo/ (needs GPU/train extra, though --smoke-test works without one)
-uv run scripts/run_eval.py --model Qwen/Qwen2.5-3B-Instruct --adapter outputs/constitutional_dpo/ --condition-name constitutional_dpo
+uv run scripts/run_eval.py --model Qwen/Qwen3-4B-Instruct-2507 --adapter outputs/constitutional_dpo/ --condition-name constitutional_dpo
 uv run scripts/plot_comparison.py              # -> outputs/eval/comparison.png
 ```
 

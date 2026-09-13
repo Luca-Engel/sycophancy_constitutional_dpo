@@ -45,7 +45,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Tiny public causal LM used by --smoke-test, small enough to load and train
 # a step on CPU in seconds. GPT2-architecture, so its attention projection is
 # named "c_attn" (a Conv1D layer) rather than the q_proj/k_proj/v_proj/o_proj
-# names used by the real Qwen2.5 policy model.
+# names used by the real Qwen3 policy model.
 SMOKE_TEST_MODEL = "sshleifer/tiny-gpt2"
 
 REQUIRED_CONFIG_KEYS = ("base_model", "output_dir", "lora", "learning_rate", "beta")

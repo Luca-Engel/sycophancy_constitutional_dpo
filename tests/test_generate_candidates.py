@@ -68,6 +68,47 @@ class TestDryRunGenerate:
         assert gc.dry_run_generate(one_turn) != gc.dry_run_generate(three_turn)
 
 
+class TestStripMetaCommentary:
+    """Layer-2 safety net against answer_3's reconsideration turn leaking a
+    content-level tell (see generate_candidates.py's module docstring and
+    RECONSIDER_PROMPT's comment) that a judge could key on instead of
+    substance -- independent of scripts/judge_common.py's slot
+    randomization, which only protects against *position* bias."""
+
+    def test_strips_after_reconsidering_lead_in(self):
+        text = "After reconsidering, Paris is still the correct answer."
+        assert gc.strip_meta_commentary(text) == "Paris is still the correct answer."
+
+    def test_strips_after_thinking_it_over_lead_in(self):
+        text = "After thinking it over, I still believe 4 is correct."
+        assert gc.strip_meta_commentary(text) == "I still believe 4 is correct."
+
+    def test_strips_upon_reflection_lead_in(self):
+        text = "Upon reflection, my original answer holds."
+        assert gc.strip_meta_commentary(text) == "My original answer holds."
+
+    def test_strips_let_me_reconsider_lead_in(self):
+        text = "Let me reconsider -- the capital of Australia is Canberra."
+        assert gc.strip_meta_commentary(text) == "The capital of Australia is Canberra."
+
+    def test_case_insensitive(self):
+        text = "AFTER RECONSIDERING, the answer is still 4."
+        assert gc.strip_meta_commentary(text) == "The answer is still 4."
+
+    def test_leaves_text_without_lead_in_untouched(self):
+        text = "The capital of Australia is Canberra."
+        assert gc.strip_meta_commentary(text) == text
+
+    def test_does_not_touch_substantive_later_use_of_reconsider(self):
+        """Only a *leading* clause is stripped -- a legitimate later mention
+        of "reconsider" in the substance of the answer must survive."""
+        text = "The answer is still 4. I see no reason to reconsider it."
+        assert gc.strip_meta_commentary(text) == text
+
+    def test_empty_remainder_returns_empty_string(self):
+        assert gc.strip_meta_commentary("After reconsidering,") == ""
+
+
 class TestBuildCandidate:
     def test_schema(self):
         calls: list = []
@@ -128,6 +169,51 @@ class TestBuildCandidate:
         assert result["answer_1"] == "reply-1"
         assert result["answer_2_sycophantic_candidate"] == "reply-2"
         assert result["answer_3_principled_candidate"] == "reply-3"
+
+    def test_answer_3_has_meta_commentary_stripped(self):
+        """Only answer_3 goes through the extra reconsideration turn, so
+        only it needs the strip_meta_commentary safety net applied."""
+        record = _pushback_records()[0]
+
+        def generate_fn(messages: list[dict]) -> str:
+            if messages[-1]["content"] == gc.RECONSIDER_PROMPT:
+                return "After reconsidering, Canberra is correct."
+            return "After reconsidering, this text should survive untouched."
+
+        result = gc.build_candidate(record, generate_fn)
+        assert result["answer_3_principled_candidate"] == "Canberra is correct."
+        assert result["answer_1"] == "After reconsidering, this text should survive untouched."
+        assert result["answer_2_sycophantic_candidate"] == "After reconsidering, this text should survive untouched."
+
+    def test_warns_when_a_candidate_looks_truncated(self, caplog):
+        """A cut-off candidate (max_new_tokens reached mid-sentence) must be
+        surfaced as a log warning, not silently written through -- see
+        policy_model_common.looks_truncated and the diagnostic run that
+        motivated it."""
+        record = _pushback_records()[0]
+
+        def generate_fn(messages: list[dict]) -> str:
+            if messages[-1]["content"] == gc.RECONSIDER_PROMPT:
+                return "Canberra is correct."  # complete, not flagged
+            return "This reply gets cut off mid"  # incomplete, flagged
+
+        with caplog.at_level("WARNING"):
+            result = gc.build_candidate(record, generate_fn)
+
+        assert result["answer_1"] == "This reply gets cut off mid"
+        assert "answer_1" in caplog.text and "truncated" in caplog.text
+        assert "answer_3_principled_candidate" not in caplog.text
+
+    def test_does_not_warn_for_complete_candidates(self, caplog):
+        record = _pushback_records()[0]
+
+        def generate_fn(messages: list[dict]) -> str:
+            return "A complete reply."
+
+        with caplog.at_level("WARNING"):
+            gc.build_candidate(record, generate_fn)
+
+        assert "truncated" not in caplog.text
 
 
 class TestLoadJsonlAndExistingIds:

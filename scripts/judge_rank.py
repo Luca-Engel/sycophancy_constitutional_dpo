@@ -42,9 +42,13 @@ Safety-net cap on real API calls in one invocation:
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import logging
+import threading
 from pathlib import Path
+
+from tqdm import tqdm
 
 import judge_common as jc
 
@@ -196,6 +200,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Use a deterministic fake judge instead of calling the real API. No network access.",
     )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        help="Number of judge calls to run in parallel (the Anthropic client is safe to share "
+        "across threads). Each item can produce up to 2 independent calls (constitutional + "
+        "generic), and both are eligible to run concurrently with each other and across items. "
+        "Bound this by your Anthropic rate-limit tier (requests-per-minute), not by wishful "
+        "thinking -- too high just trades real speedup for a pile of 429 retries. Also applies "
+        "under --mock (harmless there, and useful for smoke-testing the concurrent code path "
+        "without spending real API calls).",
+    )
     return parser
 
 
@@ -247,78 +263,101 @@ def main() -> None:
         model = judge_cfg["model"]
         constitution_text = jc.load_constitution(REPO_ROOT / cfg["paths"]["constitution_file"])
 
-    call_count = 0
-    stopped_early = False
+    # Each item can need up to 2 independent judge calls (constitutional +
+    # generic). Flattening to a task-per-call list (rather than nesting the
+    # condition loop inside the item loop, as a purely sequential version
+    # would) is what lets both calls for one item, and calls across
+    # different items, all become independently schedulable work for the
+    # thread pool below.
+    tasks = []
+    for item in todo:
+        if item["id"] not in done_constitutional:
+            tasks.append((item, "constitutional"))
+        if item["id"] not in done_generic:
+            tasks.append((item, "generic"))
+    if args.max_calls is not None and len(tasks) > args.max_calls:
+        logger.info(
+            "stopping at --max-calls=%d (%d judge calls would otherwise be made)",
+            args.max_calls,
+            len(tasks),
+        )
+        tasks = tasks[: args.max_calls]
 
-    def budget_ok() -> bool:
-        return args.max_calls is None or call_count < args.max_calls
+    concurrency = args.concurrency
+
+    def run_task(task: tuple[dict, str]) -> dict:
+        item, condition = task
+        slots = jc.assign_candidate_slots(item["id"], seed, condition)
+        verdict = get_verdict(
+            item,
+            condition,
+            mock=args.mock,
+            slots=slots,
+            client=client,
+            model=model,
+            constitution_text=constitution_text,
+            max_retries=max_retries,
+        )
+        return build_dpo_record(item, verdict, slots)
+
+    write_lock = threading.Lock()
+    n_constitutional = 0
+    n_generic = 0
+
+    def handle_result(task: tuple[dict, str], record: dict, f_constitutional, f_generic) -> None:
+        nonlocal n_constitutional, n_generic
+        item, condition = task
+        f = f_constitutional if condition == "constitutional" else f_generic
+        with write_lock:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            f.flush()
+        if condition == "constitutional":
+            done_constitutional.add(item["id"])
+            n_constitutional += 1
+        else:
+            done_generic.add(item["id"])
+            n_generic += 1
+        logger.debug("judged id=%s condition=%s_dpo -> %s", item["id"], condition, record["chosen"][:60])
 
     with (
         out_constitutional_path.open("a", encoding="utf-8") as f_constitutional,
         out_generic_path.open("a", encoding="utf-8") as f_generic,
     ):
-        for item in todo:
-            if stopped_early:
-                break
-
-            if item["id"] not in done_constitutional:
-                if not budget_ok():
-                    stopped_early = True
-                    break
-                call_count += 1
-                slots = jc.assign_candidate_slots(item["id"], seed, "constitutional")
+        if concurrency <= 1:
+            for task in tqdm(tasks, desc="judging", unit="call"):
+                item, condition = task
                 try:
-                    verdict = get_verdict(
-                        item,
-                        "constitutional",
-                        mock=args.mock,
-                        slots=slots,
-                        client=client,
-                        model=model,
-                        constitution_text=constitution_text,
-                        max_retries=max_retries,
-                    )
+                    record = run_task(task)
                 except jc.JudgeError as exc:
-                    logger.error("skipping id=%s condition=constitutional_dpo: %s", item["id"], exc)
-                else:
-                    record = build_dpo_record(item, verdict, slots)
-                    f_constitutional.write(json.dumps(record, ensure_ascii=False) + "\n")
-                    f_constitutional.flush()
-                    done_constitutional.add(item["id"])
-                    logger.info("judged id=%s condition=constitutional_dpo -> %s", item["id"], verdict["chosen"])
+                    logger.error("skipping id=%s condition=%s_dpo: %s", item["id"], condition, exc)
+                    continue
+                handle_result(task, record, f_constitutional, f_generic)
+        else:
+            logger.info("judging with %d concurrent workers", concurrency)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+                futures = {executor.submit(run_task, task): task for task in tasks}
+                for future in tqdm(
+                    concurrent.futures.as_completed(futures),
+                    total=len(futures),
+                    desc="judging",
+                    unit="call",
+                ):
+                    task = futures[future]
+                    item, condition = task
+                    try:
+                        record = future.result()
+                    except jc.JudgeError as exc:
+                        logger.error("skipping id=%s condition=%s_dpo: %s", item["id"], condition, exc)
+                        continue
+                    handle_result(task, record, f_constitutional, f_generic)
 
-            if item["id"] not in done_generic:
-                if not budget_ok():
-                    stopped_early = True
-                    break
-                call_count += 1
-                slots = jc.assign_candidate_slots(item["id"], seed, "generic")
-                try:
-                    verdict = get_verdict(
-                        item,
-                        "generic",
-                        mock=args.mock,
-                        slots=slots,
-                        client=client,
-                        model=model,
-                        max_retries=max_retries,
-                    )
-                except jc.JudgeError as exc:
-                    logger.error("skipping id=%s condition=generic_dpo: %s", item["id"], exc)
-                else:
-                    record = build_dpo_record(item, verdict, slots)
-                    f_generic.write(json.dumps(record, ensure_ascii=False) + "\n")
-                    f_generic.flush()
-                    done_generic.add(item["id"])
-                    logger.info("judged id=%s condition=generic_dpo -> %s", item["id"], verdict["chosen"])
-
-    if stopped_early:
-        logger.info("stopped early: reached --max-calls=%d (%d calls made)", args.max_calls, call_count)
     logger.info(
-        "done. constitutional_dpo: %d total pairs at %s, generic_dpo: %d total pairs at %s",
+        "done. constitutional_dpo: %d total pairs (%d new) at %s, generic_dpo: %d total pairs (%d new) at %s",
         len(done_constitutional),
+        n_constitutional,
         out_constitutional_path,
         len(done_generic),
+        n_generic,
         out_generic_path,
     )
 

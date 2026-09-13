@@ -28,6 +28,29 @@ EVAL_HOLDOUT_TARGET = 125
 # per example, so this deliberately stays well under "everything left over".
 TRAIN_SEED_CAP = 500
 
+# Categories pooled together when computing how many eval slots to hand out,
+# so a very small category (aqua_mc, n=9) doesn't get entirely drained into
+# eval before it has a chance to contribute anything to train_seed. Each
+# key's examples keep their own `category` label in the output -- the merge
+# only affects the eval/train *count* for that category, which is split back
+# out proportional to its share of the merged pool (see _proportional_split).
+ALLOCATION_GROUP = {
+    "factual_qa/aqua_mc": "factual_qa/math_mc_cot",
+}
+
+# NOTE: opinion_agreement (a single templated persona-question format,
+# confirmed near-perfectly separable by a TF-IDF classifier in the
+# data-exploration notebook) ends up ~60% of train_seed. An earlier version
+# of this script capped its train share, but that conflicts with
+# target_preference_pairs=400 in configs/project.yaml: train_seed=469 was
+# deliberately sized to leave slack above 400 for judge-call failures
+# (docs/NEXT_STEPS.md), and a cap tight enough to matter for diversity
+# (e.g. 40%) drops train_seed to ~315, already short of 400 before any
+# failures. If opinion_agreement's share turns out to hurt training in
+# practice, address it when trimming 469 -> 400 during pair curation
+# (scripts/judge_rank.py), which already has that slack budgeted in,
+# rather than here where it costs the safety margin.
+
 
 def normalize_for_dedup(prompt: str) -> str:
     return " ".join(prompt.lower().split())
@@ -46,6 +69,50 @@ def dedup_examples(examples: list[dict]) -> list[dict]:
     return out
 
 
+def _round_robin_quota(pool_sizes: dict[str, int], target: int) -> dict[str, int]:
+    """Equal round-robin allocation of ``target`` slots across ``pool_sizes``.
+
+    Cycles through keys in sorted order, taking one slot at a time from
+    whichever keys still have pool left, until ``target`` is reached or every
+    pool is exhausted. No key can be allocated more than its own pool size.
+    """
+    keys = sorted(pool_sizes.keys())
+    remaining = dict(pool_sizes)
+    quota = {k: 0 for k in keys}
+    idx = 0
+    taken = 0
+    while taken < target and any(remaining.values()):
+        k = keys[idx % len(keys)]
+        if remaining[k] > 0:
+            remaining[k] -= 1
+            quota[k] += 1
+            taken += 1
+        idx += 1
+    return quota
+
+
+def _proportional_split(sub_pool_sizes: dict[str, int], quota: int) -> dict[str, int]:
+    """Split ``quota`` across ``sub_pool_sizes`` proportional to each size.
+
+    Uses largest-remainder rounding so the parts sum exactly to ``quota``,
+    and never assigns a sub-category more than its own pool size.
+    """
+    total = sum(sub_pool_sizes.values())
+    if total == 0:
+        return {k: 0 for k in sub_pool_sizes}
+    raw = {k: quota * n / total for k, n in sub_pool_sizes.items()}
+    assigned = {k: min(int(v), sub_pool_sizes[k]) for k, v in raw.items()}
+    remainder = quota - sum(assigned.values())
+    by_fraction = sorted(sub_pool_sizes, key=lambda k: raw[k] - assigned[k], reverse=True)
+    for k in by_fraction:
+        if remainder <= 0:
+            break
+        if assigned[k] < sub_pool_sizes[k]:
+            assigned[k] += 1
+            remainder -= 1
+    return assigned
+
+
 def stratified_split(
     examples: list[dict],
     seed: int,
@@ -54,10 +121,16 @@ def stratified_split(
 ) -> tuple[list[dict], list[dict]]:
     """Split deduplicated examples into (eval_holdout, train_seed).
 
-    Stratifies by category: shuffles within each category, then round-robins
-    across categories when filling the eval set so no single category
-    dominates it. Everything not selected for eval becomes the train-seed
-    pool, shuffled and capped at ``train_cap``.
+    Stratifies by category: shuffles within each category, then computes an
+    equal round-robin eval quota per *allocation group* (categories merged
+    via ``ALLOCATION_GROUP`` share one group so a tiny category isn't fully
+    drained into eval -- see its docstring). Each group's quota is split back
+    out across its member categories proportional to their share of the
+    group's pool, so every category keeps its own label and gets a
+    deterministic, non-zero presence on both sides when its pool allows.
+
+    Everything not selected for eval becomes the train-seed pool, shuffled
+    and capped at ``train_cap``.
     """
     rng = random.Random(seed)
 
@@ -65,21 +138,30 @@ def stratified_split(
     for ex in examples:
         by_category[ex["category"]].append(ex)
 
-    categories = sorted(by_category.keys())
-    for cat in categories:
+    for cat in by_category:
         rng.shuffle(by_category[cat])
 
-    remaining = {cat: list(rows) for cat, rows in by_category.items()}
-    eval_holdout: list[dict] = []
-    idx = 0
-    while len(eval_holdout) < eval_target and any(remaining.values()):
-        cat = categories[idx % len(categories)]
-        if remaining[cat]:
-            eval_holdout.append(remaining[cat].pop())
-        idx += 1
+    group_of = {cat: ALLOCATION_GROUP.get(cat, cat) for cat in by_category}
+    members: dict[str, list[str]] = defaultdict(list)
+    for cat, grp in group_of.items():
+        members[grp].append(cat)
 
-    train_pool = [ex for rows in remaining.values() for ex in rows]
+    group_pool_sizes = {grp: sum(len(by_category[c]) for c in cats) for grp, cats in members.items()}
+    group_quota = _round_robin_quota(group_pool_sizes, eval_target)
+
+    eval_holdout: list[dict] = []
+    train_pool: list[dict] = []
+    for grp, cats in members.items():
+        sub_sizes = {c: len(by_category[c]) for c in cats}
+        sub_quota = _proportional_split(sub_sizes, group_quota[grp])
+        for c in cats:
+            n = sub_quota[c]
+            eval_holdout.extend(by_category[c][:n])
+            train_pool.extend(by_category[c][n:])
+
+    rng.shuffle(eval_holdout)
     rng.shuffle(train_pool)
+
     if len(train_pool) > train_cap:
         train_pool = train_pool[:train_cap]
 
@@ -147,9 +229,14 @@ def build_manifest(
                 "2. `scripts/split_eval_holdout.py` deduplicates by normalized "
                 "(lowercased, whitespace-collapsed) prompt text, then splits: "
                 "examples are grouped by category, shuffled within each category "
-                "using the configured seed, and round-robined across categories "
-                "into the eval holdout until it reaches its target size, so no "
-                "single category dominates the held-out set. Everything left over "
+                "using the configured seed, and given an equal round-robin eval "
+                "quota per allocation group (aqua_mc is grouped with "
+                "math_mc_cot so it isn't fully drained into eval; every other "
+                "category is its own group), so no single category dominates "
+                "the held-out set. Each group's quota is split back out across "
+                "its member categories proportional to their share of the "
+                "group's pool, so every category keeps its own label and a "
+                "deterministic presence on both sides. Everything left over "
                 "is shuffled and capped to form the train-seed pool."
             ),
             (

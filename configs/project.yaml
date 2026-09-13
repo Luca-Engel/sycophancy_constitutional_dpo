@@ -4,11 +4,27 @@
 
 # Base instruction-tuned model that gets DPO-tuned (generic_dpo and
 # constitutional_dpo) and evaluated untouched (baseline). Small enough to
-# LoRA-tune cheaply.
-policy_model: "Qwen/Qwen2.5-3B-Instruct"
+# LoRA-tune cheaply. Apache-2.0 licensed. Deliberately the -Instruct-2507
+# checkpoint, not the plain Qwen3-4B release: it's confirmed non-thinking-only
+# (never emits <think> blocks), which matters here specifically -- run_eval.py's
+# flip heuristic and judge verdict only ever look at the final answer, so a
+# thinking-capable model could cave to pushback inside a hidden reasoning trace
+# in a way this project's eval would never see. Also deliberately in the 3-4B
+# size class rather than something larger: published sycophancy-scaling work
+# (Qwen3/Llama-3 across 1B-235B, see PROJECT_PLAN.md) found resistance to
+# pushback scales with model size, so this range is expected to show a real,
+# non-floor baseline sycophancy rate for the constitution to improve on.
+policy_model: "Qwen/Qwen3-4B-Instruct-2507"
 
-# Used instead of policy_model if GPU time/memory runs short.
-policy_model_fallback: "Qwen/Qwen2.5-1.5B-Instruct"
+# Used instead of policy_model if GPU time/memory runs short. UNVERIFIED
+# CAVEAT: unlike policy_model above, Qwen3-1.7B does not have a confirmed
+# non-thinking-only "-Instruct-2507"-style release -- it may be a hybrid
+# model that emits <think> blocks by default. Before actually using this
+# fallback, verify its model card and, if it is a thinking/non-thinking
+# hybrid, add explicit enable_thinking=False handling to
+# policy_model_common.py (not currently implemented) rather than assume it
+# behaves like policy_model above.
+policy_model_fallback: "Qwen/Qwen3-1.7B"
 
 # Judge model used for AI-feedback critique/ranking (data generation) and
 # for scoring sycophancy on the held-out eval set. Deliberately a different
@@ -40,10 +56,28 @@ target_preference_pairs: 400
 
 # Sampling params for scripts/generate_candidates.py's three policy-model
 # generations per pushback item (answer_1, the sycophantic candidate, and
-# the principled-reconsideration candidate). Same params for all three so
-# any difference between them is due to conversation context, not sampling.
+# the principled-reconsideration candidate), and for run_eval.py's two
+# generations per eval item. Same params across all of them so any
+# difference between candidates is due to conversation context, not
+# sampling.
+#
+# max_new_tokens history: 512 -> 1024 -> 2048. A diagnostic run found ~68%
+# of plain-continuation ("sycophantic-style") candidates truncated
+# mid-sentence at 512. Raising to 1024 was not enough either: a math item
+# (LaTeX-heavy content -- \sqrt, \frac{}{}, \Rightarrow -- tokenizes far
+# less efficiently than plain English, so a short-looking character count
+# can still be a long token count) was confirmed truncated mid-formula at
+# 1024 by direct byte-level inspection, then confirmed to complete cleanly
+# on retry at 2048. Verify with policy_model_common.looks_truncated's
+# warning logs on a fresh diagnostic run before trusting 2048 fully
+# resolves it. A generous cap isn't free -- it raises the tail of sequence
+# lengths train_dpo.py's DPOTrainer has to fit in GPU memory on a single
+# consumer GPU, and doesn't reliably fix a model that would otherwise
+# degrade into repetitive padding once given a very large budget -- so
+# don't raise this further without new evidence a specific item still
+# truncates at 2048.
 candidate_generation:
-  max_new_tokens: 512
+  max_new_tokens: 2048
   temperature: 0.7
   top_p: 0.9
   do_sample: true
