@@ -70,6 +70,34 @@ yourself (omit `--endpoint-model`, it's already bound to one model -- and
 remember it bills per minute while running, so pause/delete it when done).
 Useful for a quick, small, real-model diagnostic run from a plain laptop.
 
+## 4b. `verify_principled_candidates.py`
+
+Checks that each item's principled-reconsideration candidate
+(`answer_3_principled_candidate`) actually held firm against its pushback,
+rather than trusting it as-is -- the base policy model doesn't reliably
+comply with the "only change your answer if warranted" instruction it was
+generated under (see README.md's "Debugging incident" section for the
+real run that found this). Regenerates up to `--max-regenerations` times;
+drops the item entirely (for both DPO conditions -- see the module
+docstring for why) if it never holds firm.
+
+```
+# Real run (same backend flags as generate_candidates.py, plus judge_rank.py's judge setup):
+uv run scripts/verify_principled_candidates.py \
+    --endpoint-url https://router.huggingface.co \
+    --endpoint-model Qwen/Qwen3-4B-Instruct-2507
+
+# Mock/dry-run (no GPU, no network, exercises full control flow):
+uv run scripts/verify_principled_candidates.py --dry-run --mock --limit 5
+```
+
+Reads `data/generated/candidates.jsonl`, writes
+`data/generated/candidates_verified.jsonl` (only kept items, with
+`answer_3_principled_candidate` replaced by whichever version actually held
+firm) plus a `candidates_verified_MANIFEST.md` documenting pass/regenerate/
+drop counts. Point `judge_rank.py --in` at this file instead of the raw
+`candidates.jsonl` to train on the cleaned data.
+
 ## 5. `judge_rank.py`
 
 Asks a judge model to pick the better of the two candidates under two

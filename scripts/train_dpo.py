@@ -370,6 +370,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Override the config's output_dir. Mainly useful with --max-steps, so a smoke "
         "run's throwaway adapter doesn't get saved over the real training run's output.",
     )
+    parser.add_argument(
+        "--dataset-path",
+        type=str,
+        default=None,
+        help="Override the config's dataset_path. Useful for training on a variant "
+        "preference-pairs file (e.g. a differently-filtered dataset) without editing or "
+        "duplicating the base YAML config -- pair with --output-dir so it doesn't overwrite "
+        "the original run's adapter.",
+    )
     return parser
 
 
@@ -393,6 +402,8 @@ def main() -> None:
         cfg["max_steps"] = args.max_steps
     if args.output_dir is not None:
         cfg["output_dir"] = args.output_dir
+    if args.dataset_path is not None:
+        cfg["dataset_path"] = args.dataset_path
 
     validate_config(cfg)
     run_training(cfg, smoke_test=args.smoke_test)

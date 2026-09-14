@@ -229,6 +229,14 @@ class TestArgParser:
         assert args.max_steps == 2
         assert args.output_dir == "outputs/smoke"
 
+    def test_dataset_path_override_defaults_to_none_and_parses(self):
+        args = td.build_arg_parser().parse_args(["--config", "configs/train_generic_dpo.yaml"])
+        assert args.dataset_path is None
+        args = td.build_arg_parser().parse_args(
+            ["--config", "configs/train_generic_dpo.yaml", "--dataset-path", "data/preference_pairs_v2_clean/generic_dpo.jsonl"]
+        )
+        assert args.dataset_path == "data/preference_pairs_v2_clean/generic_dpo.jsonl"
+
 
 class TestSmokeTestTrainingLoop:
     """Exercises the real model-load -> LoRA wrap -> DPOTrainer -> one
