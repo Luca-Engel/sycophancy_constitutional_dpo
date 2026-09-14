@@ -128,11 +128,16 @@ def main() -> None:
     out_dir = Path(args.out_dir) if args.out_dir else in_dir.parent / f"{in_dir.name}_clean"
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    try:
+        in_dir_display = in_dir.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        in_dir_display = in_dir.as_posix()
+
     filenames = ["constitutional_dpo.jsonl", "generic_dpo.jsonl"]
     manifest_lines = [
         "# Filtered DPO preference pairs: provenance",
         "",
-        f"Filtered from `{in_dir}` by `scripts/filter_preference_pairs.py`.",
+        f"Filtered from `{in_dir_display}` by `scripts/filter_preference_pairs.py`.",
         "Raw judged data is untouched; this is a separate, derived copy.",
         "",
         "## Exclusions",

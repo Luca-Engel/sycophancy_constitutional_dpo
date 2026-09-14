@@ -6,7 +6,7 @@ then carves off a stratified held-out evaluation set and a capped
 training-seed pool with zero prompt-text overlap between the two.
 
 Usage:
-    uv run scripts/split_eval_holdout.py [--input data/raw_prompts.jsonl] [--seed 42]
+    uv run scripts/split_eval_holdout.py [--input data/raw/raw_prompts.jsonl] [--seed 42]
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ logger = logging.getLogger("split_eval_holdout")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Target size for the held-out eval set (PROJECT_PLAN / subtask spec: ~100-150).
+# Target size for the held-out eval set (project spec target: ~100-150).
 EVAL_HOLDOUT_TARGET = 125
 # Cap on the training-seed pool -- later stages call paid judge/policy APIs
 # per example, so this deliberately stays well under "everything left over".

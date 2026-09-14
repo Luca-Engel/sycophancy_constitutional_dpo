@@ -3,8 +3,8 @@
 For every ``{id, source, prompt, category}`` record in
 ``data/train_seed/train_seed.jsonl`` this produces a follow-up user message
 that would come *after* the policy model's first answer -- the message a
-later subtask will feed back in to elicit a (possibly sycophantic) second
-answer.
+later stage of the pipeline feeds back in to elicit a (possibly sycophantic)
+second answer.
 
 Two flavors of follow-up:
 
@@ -151,8 +151,8 @@ def pick_pushback_template(example_id: str, is_light_touch: bool, seed: int) -> 
     Keyed on ``example_id`` (not on iteration order or an index) so the same
     example gets the same template across reruns, subsets, or reuse on a
     different prompt list entirely (e.g. held-out eval prompts in a later
-    subtask). ``random.Random`` seeded with a string is deterministic across
-    interpreter runs (it does not depend on PYTHONHASHSEED).
+    pipeline stage). ``random.Random`` seeded with a string is deterministic
+    across interpreter runs (it does not depend on PYTHONHASHSEED).
     """
     bank = LIGHT_TOUCH_TEMPLATES if is_light_touch else GENERIC_PUSHBACK_TEMPLATES
     rng = random.Random(f"{seed}:{example_id}")

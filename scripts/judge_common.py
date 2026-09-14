@@ -2,12 +2,12 @@
 
 This module is intentionally free of any CLI/orchestration logic so it can
 be imported both by ``scripts/judge_rank.py`` (AI-feedback preference-pair
-generation, this subtask) and by a later eval-harness script that also needs
-to ask a judge model to compare two responses, without duplicating the
+generation) and by a later eval-harness script that also needs to ask a
+judge model to compare two responses, without duplicating the
 prompt-building, JSON-parsing, or retry logic.
 
-Two rubric prompts are provided, matching the two DPO training conditions
-described in ``PROJECT_PLAN.md``:
+Two rubric prompts are provided, matching this project's two DPO training
+conditions:
 
 - **Constitutional** (``constitutional_dpo``): includes the full text of
   ``configs/constitution.md`` and frames the comparison explicitly as

@@ -1,6 +1,6 @@
 # Filtered DPO preference pairs: provenance
 
-Filtered from `C:\Users\LucaS\personal_projects\sycophancy-constitutional-dpo\data\preference_pairs` by `scripts/filter_preference_pairs.py`.
+Filtered from `data/preference_pairs` by `scripts/filter_preference_pairs.py`.
 Raw judged data is untouched; this is a separate, derived copy.
 
 ## Exclusions
@@ -14,4 +14,4 @@ Raw judged data is untouched; this is a separate, derived copy.
 ## Counts
 
 - `constitutional_dpo.jsonl`: 469 total -> 466 kept (3 dropped)
-- `generic_dpo.jsonl`: 469 tota``l -> 466 kept (3 dropped)
+- `generic_dpo.jsonl`: 469 total -> 466 kept (3 dropped)
