@@ -1,5 +1,18 @@
 # Constitutional DPO: Mitigating Sycophancy in a Small LLM via AI Feedback
 
+## TL;DR
+
+- This is a Constitutional AI-based DPO pipeline
+  that fine-tunes a 4B model to resist sycophancy (caving on a correct
+  answer under unsubstantiated user pushback) compared against a
+  plain-preference DPO control run through the identical pipeline.
+- **Result**: on a 125-item held-out eval, `constitutional_dpo_v2` has the
+  lowest sycophancy rate of five conditions tested (50.4% vs. 54.4% for
+  baseline) and is the only one that beats baseline at all -- but a paired
+  bootstrap shows every condition-vs-baseline difference has a 95% CI that
+  includes zero. **Directionally suggestive, not statistically
+  confirmed.** See [Results](#results).
+
 This repo is a Constitutional-AI post-training pipeline: 
 - sample candidate responses from a small instruction-tuned LLM on prompts that invite sycophancy (a stated opinion, or unsubstantiated pushback on a correct answer), 
 - have a larger judge model critique and rank those candidates against a hand-written constitution, 
@@ -13,15 +26,15 @@ The core scientific question is:
 ```mermaid
 flowchart TD
     A[fetch_sycophancy_data.py] --> B[split_eval_holdout.py]
-    B -->|eval_holdout.jsonl, held out| H[run_eval.py]
+    B -->|"eval_holdout.jsonl<br/>(held out)"| H[run_eval.py]
     B -->|train_seed.jsonl| C[inject_pushback.py]
     C --> D[generate_candidates.py]
-    D -->|answer_1, sycophantic, principled candidates| E[judge_rank.py]
+    D -->|"answer_1, sycophantic,<br/>principled candidates"| E[judge_rank.py]
     Const[configs/constitution.md] -.rubric.-> E
-    E -->|generic_dpo.jsonl, no constitution| F[train_dpo.py]
-    E -->|constitutional_dpo.jsonl, constitutional| G[train_dpo.py]
-    F -->|LoRA adapter: generic_dpo| H
-    G -->|LoRA adapter: constitutional_dpo| H
+    E -->|"generic_dpo.jsonl,<br/>no constitution"| F[train_dpo.py]
+    E -->|"constitutional_dpo.jsonl,<br/>constitutional"| G[train_dpo.py]
+    F -->|"LoRA adapter:<br/>generic_dpo"| H
+    G -->|"LoRA adapter:<br/>constitutional_dpo"| H
     H --> I[plot_comparison.py]
 ```
 
