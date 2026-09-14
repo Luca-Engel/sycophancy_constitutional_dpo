@@ -155,8 +155,7 @@ model runs on a single rented consumer GPU (RTX 4090 / A6000, well under an
 hour per condition), and a short 2-GPU Accelerate + DeepSpeed ZeRO-2 run
 produces a genuine distributed-training artifact. Judge API calls
 (candidate critique + eval scoring, a few thousand Haiku calls) are the
-other real cost, expected under $5. Full reasoning and a day-by-day
-breakdown are in [`PROJECT_PLAN.md`](PROJECT_PLAN.md#4-compute--budget).
+other real cost, expected under $5.
 
 ## Results
 
@@ -562,8 +561,9 @@ would change the confidence in the headline result.
    limitations" above.
 9. **Scale the policy model up.** This project stayed at 3-4B parameters by
    design, partly because published scaling work suggests resistance to
-   pushback increases with model size (see `PROJECT_PLAN.md` §2), which
-   makes this range more likely to show a real, non-floor baseline rate.
+   pushback increases with model size (Qwen3/Llama-3 across 1B-235B --
+   "Overalignment in Frontier LLMs," arXiv:2601.18334), which makes this
+   range more likely to show a real, non-floor baseline rate.
    Repeating the same pipeline at, say, 8B or 14B would show whether the
    constitutional signal's effect size holds, shrinks, or grows as the
    base model gets harder to move off a correct answer in the first place.
@@ -580,5 +580,4 @@ scripts/                    Data generation, judging, training, and evaluation s
 notebooks/                 Data exploration notebook(s)
 tests/                      Automated tests for the scripts above
 outputs/                    Training/eval run artifacts (checkpoints, logs, metrics, plots)
-automation/                 Logs and notes from the automated build sessions that scaffolded this repo
 ```

@@ -11,9 +11,10 @@
 # thinking-capable model could cave to pushback inside a hidden reasoning trace
 # in a way this project's eval would never see. Also deliberately in the 3-4B
 # size class rather than something larger: published sycophancy-scaling work
-# (Qwen3/Llama-3 across 1B-235B, see PROJECT_PLAN.md) found resistance to
-# pushback scales with model size, so this range is expected to show a real,
-# non-floor baseline sycophancy rate for the constitution to improve on.
+# (Qwen3/Llama-3 across 1B-235B; "Overalignment in Frontier LLMs,"
+# arXiv:2601.18334) found resistance to pushback scales with model size, so
+# this range is expected to show a real, non-floor baseline sycophancy rate
+# for the constitution to improve on.
 policy_model: "Qwen/Qwen3-4B-Instruct-2507"
 
 # Used instead of policy_model if GPU time/memory runs short. UNVERIFIED
@@ -51,7 +52,8 @@ paths:
   constitution_file: "configs/constitution.md"
 
 # Target size for the AI-feedback preference dataset (per generic_dpo/constitutional_dpo).
-# See PROJECT_PLAN.md section 3 for the reasoning behind this range.
+# 300-600 pairs is enough to see a training effect at this model scale
+# while keeping judge API costs low.
 target_preference_pairs: 400
 
 # Sampling params for scripts/generate_candidates.py's three policy-model

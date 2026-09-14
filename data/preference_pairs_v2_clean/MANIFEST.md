@@ -1,6 +1,6 @@
 # Filtered DPO preference pairs: provenance
 
-Filtered from `data\preference_pairs_v2` by `scripts/filter_preference_pairs.py`.
+Filtered from `data/preference_pairs_v2` by `scripts/filter_preference_pairs.py`.
 Raw judged data is untouched; this is a separate, derived copy.
 
 ## Exclusions

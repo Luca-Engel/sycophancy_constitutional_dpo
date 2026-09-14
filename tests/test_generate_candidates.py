@@ -384,7 +384,7 @@ class TestRealTinyModelSanityCheck:
     """Optional sanity check of the real (non-dry-run) generation path
     against a tiny public HF model. Skipped entirely if transformers/torch
     aren't installed, or if the model can't be fetched (no network / HF
-    hiccup) -- the mocked tests above are the real bar for this subtask."""
+    hiccup) -- the mocked tests above are the real bar for this module."""
 
     def test_generate_reply_with_tiny_model(self):
         import pytest

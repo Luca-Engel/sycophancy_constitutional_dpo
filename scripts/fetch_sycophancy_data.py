@@ -20,7 +20,7 @@ and written as JSONL. This is the raw combined pool. Deduplication and the
 eval/train split happen in ``scripts/split_eval_holdout.py``.
 
 Usage:
-    uv run scripts/fetch_sycophancy_data.py [--output data/raw_prompts.jsonl] [--seed 42]
+    uv run scripts/fetch_sycophancy_data.py [--output data/raw/raw_prompts.jsonl] [--seed 42]
 """
 
 from __future__ import annotations

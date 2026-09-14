@@ -32,7 +32,7 @@ logger = logging.getLogger("plot_comparison")
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Preferred left-to-right ordering on the x-axis when these condition names
-# are present (see PROJECT_PLAN.md's baseline/generic_dpo/constitutional_dpo
+# are present (see README.md's baseline/generic_dpo/constitutional_dpo
 # naming). Any other condition name found is appended afterwards,
 # alphabetically.
 CANONICAL_CONDITION_ORDER = ("baseline", "generic_dpo", "constitutional_dpo")

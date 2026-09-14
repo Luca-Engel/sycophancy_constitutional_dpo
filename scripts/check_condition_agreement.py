@@ -13,8 +13,8 @@ constitution-free control) ends up training on largely the same preference
 signal as constitutional_dpo, which would understate how much the
 constitution itself contributes on the held-out eval.
 
-This script doesn't fix that (see README/PROJECT_PLAN discussion of the
-candidate-pool redesign); it just measures how big the effect is on
+This script doesn't fix that (see README.md's "Future work" discussion of
+regenerating the candidate pool); it just measures how big the effect is on
 whatever preference-pairs data you already have. A high agreement rate is
 evidence the confound matters in practice; a low one means it's mostly
 theoretical for this dataset.
