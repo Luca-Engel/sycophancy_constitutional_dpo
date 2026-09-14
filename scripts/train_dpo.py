@@ -230,7 +230,15 @@ def build_model_and_tokenizer(cfg: dict[str, Any]):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(cfg["base_model"], dtype=dtype)
+    # device_map is required explicitly -- from_pretrained() without it loads
+    # onto CPU regardless of GPU availability, and DPOTrainer does not
+    # reliably move it afterward. Same pattern as
+    # policy_model_common.load_policy_model's (already-correct) model load.
+    model = AutoModelForCausalLM.from_pretrained(
+        cfg["base_model"],
+        dtype=dtype,
+        device_map="auto" if torch.cuda.is_available() else None,
+    )
     return model, tokenizer
 
 
