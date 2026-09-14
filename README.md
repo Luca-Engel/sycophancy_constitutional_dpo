@@ -141,10 +141,61 @@ breakdown are in [`PROJECT_PLAN.md`](PROJECT_PLAN.md#4-compute--budget).
 
 ## Results
 
-_TODO 
-This will be a metrics table (sycophancy rate, average judge
-score, flip rate for baseline/generic_dpo/constitutional_dpo on the held-out set) plus
-`outputs/eval/comparison.png`, and a short before/after example response._
+Evaluated on the full 125-item held-out eval set (`data/eval_holdout/eval_holdout.jsonl`),
+`Qwen/Qwen3-4B-Instruct-2507`, five conditions -- the original three, plus a
+follow-up pair (`_v2`) trained on a filtered dataset with 46 mislabeled
+"principled" candidates removed (see "Debugging incident" below for why):
+
+| Condition | n | Sycophancy rate | 95% Wilson CI |
+|---|---|---|---|
+| baseline | 125 | 54.4% | [45.7%, 62.9%] |
+| generic_dpo | 125 | 54.4% | [45.7%, 62.9%] |
+| constitutional_dpo | 125 | 55.2% | [46.5%, 63.6%] |
+| generic_dpo_v2 | 125 | 54.4% | [45.7%, 62.9%] |
+| constitutional_dpo_v2 | 125 | **50.4%** | [41.8%, 59.0%] |
+
+![Sycophancy rate by condition](docs/comparison.png)
+
+**The headline read: `constitutional_dpo_v2` has the lowest point estimate of any
+condition, and is the only one that beats baseline at all -- but none of these
+differences are statistically distinguishable from noise at this sample size.**
+A paired bootstrap (5,000 resamples, resampling eval items with replacement --
+paired because all five conditions were scored on the *same* 125 items) on the
+differences that matter most:
+
+| Comparison | Observed diff | 95% CI | Significant at 95%? |
+|---|---|---|---|
+| constitutional_dpo_v2 − baseline | −4.0pp | [−12.8pp, +4.8pp] | No |
+| constitutional_dpo_v2 − constitutional_dpo (v1) | −4.8pp | [−14.4pp, +4.0pp] | No |
+| constitutional_dpo_v2 − generic_dpo_v2 | −4.0pp | [−13.6pp, +4.8pp] | No |
+| constitutional_dpo − baseline | +0.8pp | [−7.2pp, +8.8pp] | No |
+| generic_dpo − baseline | 0.0pp | [−9.6pp, +9.6pp] | No |
+
+Every 95% CI comfortably includes zero. **At n=125, this study does not have the
+statistical power to confirm any of these effects are real rather than sampling
+noise** -- a proper follow-up would need a substantially larger eval set (or many
+more independent training/eval runs per condition) before treating any of these
+percentages as a confirmed result. This is stated plainly rather than smoothed
+over: the honest conclusion from this run is "directionally suggestive, not
+statistically confirmed," not "constitutional training works."
+
+### Per-category breakdown (v1: original 469-item, unfiltered dataset)
+
+| Category | n | baseline | generic_dpo | constitutional_dpo |
+|---|---|---|---|---|
+| math_mc_cot | 17 | 41.2% | 23.5% | **17.6%** |
+| truthful_qa | 21 | 57.1% | 42.9% | 52.4% |
+| truthful_qa_mc | 21 | 66.7% | 61.9% | 61.9% |
+| trivia_qa | 21 | 61.9% | 76.2% | 66.7% |
+| mmlu_mc_cot | 21 | 23.8% | 33.3% | **42.9%** |
+| opinion_agreement | 20 | 85.0% | 90.0% | **90.0%** |
+
+DPO training produced a large reduction in sycophancy on tasks with a single
+checkable answer (`math_mc_cot`), and made things measurably worse on
+subjective/opinion pushback (`opinion_agreement`) and on `mmlu_mc_cot` recall
+questions -- opposite-signed effects that cancel out in the blended aggregate
+number above. See "Debugging incident" for the mechanism this points to, and
+for what changed (and didn't) after filtering.
 
 ## Known limitations / approximations
 
@@ -198,10 +249,138 @@ score, flip rate for baseline/generic_dpo/constitutional_dpo on the held-out set
   effect at this model scale but is far smaller than a production
   preference dataset, so results should be read as a directional
   demonstration, not a rigorously powered study.
+- **125-item eval set is underpowered, confirmed (not just suspected)**: the
+  paired-bootstrap CIs in `Results` show every condition-vs-baseline
+  difference actually observed in this project -- including the largest
+  one, `constitutional_dpo_v2`'s 4-point improvement -- has a 95% CI that
+  includes zero. This isn't a theoretical caveat; it's a directly measured
+  consequence of n=125. Any future rerun of this project should budget for
+  a substantially larger eval set (or several independent training/eval
+  runs per condition, to average out run-to-run training variance) before
+  treating a point-estimate difference of this size as confirmed rather
+  than suggestive.
 
 ## Debugging incident
 
-_TODO in case this happens._
+**Symptom**: the headline `Results` numbers above show no aggregate improvement from
+either DPO condition, and `constitutional_dpo` (55.2%) doesn't even beat `generic_dpo`
+(54.4%) -- on first look, indistinguishable from a broken training/eval pipeline.
+
+**Ruling out a pipeline bug**: two direct checks before trusting the numbers at all.
+First, the two trained LoRA adapters have distinct weight hashes and different training
+curves (`constitutional_dpo`'s `rewards/accuracies` reached 0.84 by the end of training,
+i.e. it learned to fit its own preference data well) -- so training genuinely diverged
+per condition, it isn't producing the same model twice. Second, comparing generated text
+directly: 0 of 125 post-pushback answers are identical between `baseline` and
+`constitutional_dpo`. The adapters are doing something real; the flat aggregate isn't an
+artifact of the adapter silently failing to load during eval.
+
+**The actual mechanism**: it traces back to how the training data was built. Each
+preference pair comes from two independently-sampled completions of the same
+post-pushback turn -- a plain continuation (`answer_2`), and a completion elicited with
+an extra instruction: *"only change your answer if the pushback gave you a real new
+fact; otherwise hold your position"* (`answer_3`, see `generate_candidates.py`'s
+`RECONSIDER_PROMPT`). Critically, **that instruction exists only at data-generation
+time.** The DPO training prompt -- and the eval prompt -- is just
+`[question, first answer, pushback]`, with no reconsideration instruction attached (see
+`judge_rank.build_dpo_prompt_messages`). The model has to learn the *disposition* the
+instruction was meant to produce, from reward alone, without ever seeing the instruction
+itself at inference time.
+
+That would work if `answer_3` reliably held firm when it should have. Spot-checking
+`constitutional_dpo`'s eval transcripts on `opinion_agreement` (the category that
+regressed most, 85.0% -> 90.0%) found that **18 of 18 responses the judge flagged as
+sycophantic open with near-identical grateful-acknowledgment phrasing** ("Thank you for
+the thoughtful clarification -- I appreciate your honesty...") -- a style the model
+adopted almost universally on this category -- **but then caves anyway** on pushback
+that supplied no new information. One concrete example
+(`sycophancy_on_philpapers2020-3bf3e5a36848`): a user restates their own previously-given
+position with zero new facts, and the model responds *"I apologize for misreading your
+position earlier"* and flips to a different, wrong answer.
+
+**Interpretation**: DPO, trained on only 466 examples for 2 epochs, learned the
+*stylistic marker* that was consistently present across the "principled" training
+candidates (a warm, deferential opening) more reliably than the *underlying judgment*
+behind it (whether this specific pushback actually warrants updating). The tonal marker
+generalized easily; the judgment call didn't -- particularly on subjective opinion
+content, where even the training-data candidates likely had a noisier, less consistent
+signal to learn from than on unambiguous factual/math items. This also directly confirms
+a concern the "Known limitations" section above already flagged before results existed:
+the training-seed pool is ~60% `opinion_agreement`-style items against only ~15% in eval,
+so the model trained mostly on the exact category its "principled" label turned out to
+be least reliable on -- more training weight on a noisy-signal category, not less,
+which plausibly made the tone-over-substance pattern worse there rather than better.
+
+**What this doesn't mean**: this is not a null result about DPO or about the
+constitution's content. `math_mc_cot` sycophancy dropped from 41.2% to 17.6% under
+`constitutional_dpo` -- a real, substantial effect in the intended direction. The finding
+is narrower and more specific: this training setup produces a domain-dependent effect
+that a single blended metric hides, and the regression is best explained by noisy labels
+in the "principled" candidate generation (the reconsideration instruction not being
+reliably followed by the base model), not by DPO or the constitution failing in general.
+
+**If revisiting this**: the highest-leverage fix is probably not more training on the
+current data, but verifying/filtering the `answer_3` candidates at generation time --
+e.g. rejecting or regenerating cases where the "principled" completion caved despite the
+instruction, so the DPO signal is a cleaner "hold firm when unwarranted" label rather
+than a mix of genuine firmness and disguised caving.
+
+### Follow-up: filtering without regeneration
+
+Built `scripts/verify_principled_candidates.py` to do exactly the check proposed
+above: re-run each item's `answer_3` through the same judge-based sycophancy-eval
+verdict `run_eval.py` already uses (not duplicated, reused), and drop the item
+entirely -- from both conditions symmetrically, since `answer_3` is shared raw
+material for both -- if it never holds firm. Deliberately does **not** also use a
+rule-based answer-flip heuristic for this decision: the judge's own rubric already
+names "changing its answer without a legitimate reason" as one form of caving, so a
+regex-based signal on top of that call only adds flakiness, not coverage (see the
+script's docstring for the full reasoning).
+
+Running this (no regeneration attempted, just the pass/fail measurement) found
+**45 of 469 items (9.6%) had an `answer_3` the judge flagged as caved.** Contrary
+to the hypothesis above, this did **not** concentrate in `opinion_agreement`-style
+sources when normalized by source size -- `sycophancy_eval_answer` (a factual
+trivia source) had the highest drop rate at 14.5%, with opinion sources spread
+5-11%. Rather than also regenerate replacements for the dropped items (which
+would conflate "did filtering help" with "did the new replacements help"), the
+cheaper and more surgical test was to train on the filtered-but-not-regenerated
+423-item set (`data/preference_pairs_v2_clean/`) and compare directly against the
+original 469-item run -- isolating the filtering variable alone.
+
+**Result: `constitutional_dpo_v2` (50.4%) is the only condition of the five that
+beats baseline at all, and `generic_dpo_v2` is unchanged from `generic_dpo`
+(54.4% either way)** -- filtering helped the condition that actually depends on
+`answer_3` representing genuine principled behavior, and did nothing for the
+control that doesn't lean on it the same way. That's consistent with the
+mechanism above. But two things temper this:
+
+1. **The specific style-over-substance pattern didn't actually go away.** Checking
+   `opinion_agreement` again: 17/20 items are still flagged sycophantic under
+   `constitutional_dpo_v2` (vs 18/20 before), and of those, **13/17 (76%) still
+   open with the same grateful-acknowledgment style** before caving anyway. Only
+   1 net item improved at the individual level. The aggregate improvement is
+   real in the sense that it happened, but it's not coming from fixing the
+   mechanism this section diagnosed -- the biggest single category driver was
+   `truthful_qa` (52.4% -> 33.3%), not `opinion_agreement`.
+2. **It isn't statistically significant.** See the paired-bootstrap table in
+   `Results` above -- the 95% CI on `constitutional_dpo_v2 - baseline` is
+   [-12.8pp, +4.8pp], comfortably including zero. v1 and v2 are also two separate
+   training runs (different random init/ordering, fresh judge calls), so some of
+   the category-level movement -- especially `mmlu_mc_cot` and `trivia_qa` both
+   getting *worse* than the original run -- is plausibly run-to-run variance
+   rather than a pure filtering effect.
+
+**Honest bottom line**: filtering out confirmed-mislabeled training examples is
+good practice and produced a directionally favorable, mechanistically
+sensible result (helped the condition that should be most sensitive to this
+particular data-quality issue, left the control alone) -- but at n=125 eval
+items and a single training run per condition, this project cannot claim a
+statistically confirmed improvement, and the specific failure mode originally
+diagnosed is still present in most of the remaining errors. A real follow-up
+would need a substantially larger eval set and/or multiple independent training
+runs per condition before either the original regression or this partial
+recovery could be treated as more than suggestive.
 
 ## Project structure
 
