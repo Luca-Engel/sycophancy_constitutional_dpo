@@ -27,6 +27,13 @@
 # collides with or gets reused by the real run. Safe to delete afterward.
 set -euo pipefail
 
+# Python buffers stdout in large blocks (not line-by-line) when it isn't
+# writing to an interactive terminal -- which it isn't here, since it's
+# piped through tee below. Without this, output (including tqdm progress
+# bars) can sit invisible for many minutes before appearing, even though
+# the underlying script is actually running fine.
+export PYTHONUNBUFFERED=1
+
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 MODEL="Qwen/Qwen3-4B-Instruct-2507"
