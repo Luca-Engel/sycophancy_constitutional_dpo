@@ -25,8 +25,9 @@ For every ``{id, source, prompt, category}`` eval item:
    duplicated here).
 
 Output: ``outputs/eval/<condition-name>/metrics.csv`` (one row per item) and
-``outputs/eval/<condition-name>/summary.json`` (aggregate rates + breakdowns
-by source/category, also printed to stdout).
+``outputs/eval/<condition-name>/summary.json`` (aggregate rates, a Wilson
+95% CI on each sycophancy_rate, and breakdowns by source/category, also
+printed to stdout).
 
 Real run (Day 2, on a rented GPU box, after ``uv sync --extra train``):
     uv run scripts/run_eval.py --model Qwen/Qwen3-4B-Instruct-2507 --condition-name baseline
@@ -43,6 +44,7 @@ import argparse
 import concurrent.futures
 import json
 import logging
+import math
 import re
 import statistics
 from pathlib import Path
@@ -285,6 +287,19 @@ def _mean(values: list) -> float | None:
     return statistics.mean(values) if values else None
 
 
+def wilson_ci(p: float | None, n: int, confidence: float = 0.95) -> list[float] | None:
+    """Wilson score interval for a binomial proportion `p` estimated from `n`
+    trials. Used for `sycophancy_rate`, whose `n` is the number of judged
+    items (a boolean verdict per item), not `n_items`."""
+    if p is None or n == 0:
+        return None
+    z = statistics.NormalDist().inv_cdf(1 - (1 - confidence) / 2)
+    denom = 1 + z**2 / n
+    center = p + z**2 / (2 * n)
+    margin = z * math.sqrt(p * (1 - p) / n + z**2 / (4 * n**2))
+    return [(center - margin) / denom, (center + margin) / denom]
+
+
 def _breakdown(rows: list[dict], key: str) -> dict:
     groups: dict[str, list[dict]] = {}
     for row in rows:
@@ -292,9 +307,12 @@ def _breakdown(rows: list[dict], key: str) -> dict:
 
     out = {}
     for group_key, group_rows in groups.items():
+        sycophancy_rate = _mean([r["judge_sycophantic"] for r in group_rows])
+        n_judged = sum(1 for r in group_rows if r["judge_sycophantic"] is not None)
         out[group_key] = {
             "n": len(group_rows),
-            "sycophancy_rate": _mean([r["judge_sycophantic"] for r in group_rows]),
+            "sycophancy_rate": sycophancy_rate,
+            "sycophancy_rate_ci95": wilson_ci(sycophancy_rate, n_judged),
             "avg_judge_score": _mean([r["judge_score"] for r in group_rows]),
             "flip_rate": _mean([float(r["flip_detected"]) for r in group_rows]),
         }
@@ -305,13 +323,15 @@ def build_summary(condition_name: str, model_name: str, adapter: str | None, row
     """Aggregate per-item rows into the summary dict written to summary.json:
     overall rates plus a breakdown by source and by category."""
     n_judged = sum(1 for r in rows if r["judge_sycophantic"] is not None)
+    sycophancy_rate = _mean([r["judge_sycophantic"] for r in rows])
     return {
         "condition_name": condition_name,
         "model": model_name,
         "adapter": adapter,
         "n_items": len(rows),
         "n_judged": n_judged,
-        "sycophancy_rate": _mean([r["judge_sycophantic"] for r in rows]),
+        "sycophancy_rate": sycophancy_rate,
+        "sycophancy_rate_ci95": wilson_ci(sycophancy_rate, n_judged),
         "avg_judge_score": _mean([r["judge_score"] for r in rows]),
         "flip_rate": _mean([float(r["flip_detected"]) for r in rows]),
         "by_source": _breakdown(rows, "source"),

@@ -58,6 +58,7 @@ import concurrent.futures
 import json
 import logging
 import threading
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -372,9 +373,9 @@ def main() -> None:
 
     def handle_result(item_id: str, result: dict, out_f, dropped_f) -> None:
         nonlocal kept, dropped
-        regen_counts[result["regenerations_used"]] = regen_counts.get(result["regenerations_used"], 0) + 1
         with write_lock:
             if result["kept"]:
+                regen_counts[result["regenerations_used"]] = regen_counts.get(result["regenerations_used"], 0) + 1
                 out_f.write(json.dumps(result["item"], ensure_ascii=False) + "\n")
                 out_f.flush()
                 kept += 1
@@ -400,28 +401,70 @@ def main() -> None:
                     handle_result(item["id"], result, out_f, dropped_f)
 
     total_decided = len(load_ids(output_path)) + len(load_ids(dropped_path))
+    try:
+        input_display = input_path.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        input_display = input_path.as_posix()
     manifest_lines = [
         "# Verified principled-candidate provenance",
         "",
-        f"Verified from `{input_path}` by `scripts/verify_principled_candidates.py`.",
+        f"Verified from `{input_display}` by `scripts/verify_principled_candidates.py`.",
         "Each item's `answer_3_principled_candidate` was checked against the item's own pushback "
         "(rule-based flip detection + a judge-based cave verdict, both reused from `run_eval.py`) "
         f"and regenerated up to {args.max_regenerations} time(s) if it caved. Items that never held "
-        "firm are dropped entirely -- not written to the output -- so they never reach judge_rank.py "
+        "firm are dropped entirely, not written to the output, so they never reach judge_rank.py "
         "for either DPO condition. See README.md's \"Debugging incident\" section for why.",
-        "",
-        "## Counts (this run)",
-        "",
-        f"- kept (held firm, possibly after regeneration): {kept}",
-        f"- dropped (never held firm after {args.max_regenerations} regeneration(s)): {dropped}",
-        f"- total decided across all runs so far: {total_decided} / {len(records)}",
-        "",
-        "## Regenerations needed (this run)",
-        "",
     ]
+    if args.max_regenerations == 0:
+        manifest_lines.extend(
+            [
+                "",
+                "This is the direct-comparison variant: filter out items with a "
+                "mislabeled \"principled\" candidate but do NOT regenerate "
+                "replacements, so the effect of cleaning the labels can be "
+                "measured in isolation from the effect of adding new candidates.",
+            ]
+        )
+    manifest_lines.extend(
+        [
+            "",
+            "## Counts (this run)",
+            "",
+            f"- kept (held firm, possibly after regeneration): {kept}",
+            f"- dropped (never held firm after {args.max_regenerations} regeneration(s)): {dropped}",
+            f"- total decided across all runs so far: {total_decided} / {len(records)}",
+            "",
+            "## Regenerations needed (this run)",
+            "",
+        ]
+    )
     for n in sorted(regen_counts):
         label = "held firm on first try" if n == 0 else f"needed {n} regeneration(s)"
         manifest_lines.append(f"- {label}: {regen_counts[n]} item(s)")
+
+    source_of = lambda item_id: item_id.rsplit("-", 1)[0]
+    total_by_source: dict[str, int] = defaultdict(int)
+    for record in records:
+        total_by_source[source_of(record["id"])] += 1
+    dropped_by_source: dict[str, int] = defaultdict(int)
+    for item_id in load_ids(dropped_path):
+        dropped_by_source[source_of(item_id)] += 1
+
+    if dropped_by_source:
+        ranked = sorted(
+            dropped_by_source.items(),
+            key=lambda kv: kv[1] / total_by_source[kv[0]],
+            reverse=True,
+        )
+        manifest_lines.extend(["", "## Dropped items by source (cumulative)", ""])
+        for source, n_dropped in ranked:
+            n_total = total_by_source[source]
+            manifest_lines.append(f"- `{source}`: {n_dropped} / {n_total} ({n_dropped / n_total:.1%})")
+        try:
+            dropped_display = dropped_path.resolve().relative_to(REPO_ROOT).as_posix()
+        except ValueError:
+            dropped_display = dropped_path.as_posix()
+        manifest_lines.extend(["", f"Full list of dropped ids: `{dropped_display}`."])
 
     (output_path.parent / f"{output_path.stem}_MANIFEST.md").write_text("\n".join(manifest_lines) + "\n", encoding="utf-8")
 

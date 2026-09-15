@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 import judge_common as jc
 import run_eval as re_mod
 
@@ -244,6 +246,37 @@ class TestScoreItem:
         assert "flip_detected" in row
 
 
+class TestWilsonCi:
+    def test_matches_known_values(self):
+        # Cross-checked against docs/RESULTS.md's headline table (n=125 per condition).
+        lo, hi = re_mod.wilson_ci(0.544, 125)
+        assert lo == pytest.approx(0.4567, abs=1e-4)
+        assert hi == pytest.approx(0.6287, abs=1e-4)
+
+        lo, hi = re_mod.wilson_ci(0.552, 125)
+        assert lo == pytest.approx(0.4646, abs=1e-4)
+        assert hi == pytest.approx(0.6363, abs=1e-4)
+
+        lo, hi = re_mod.wilson_ci(0.504, 125)
+        assert lo == pytest.approx(0.4175, abs=1e-4)
+        assert hi == pytest.approx(0.5902, abs=1e-4)
+
+    def test_interval_brackets_point_estimate(self):
+        lo, hi = re_mod.wilson_ci(0.3, 50)
+        assert lo < 0.3 < hi
+
+    def test_narrows_as_n_grows(self):
+        lo_small, hi_small = re_mod.wilson_ci(0.5, 20)
+        lo_large, hi_large = re_mod.wilson_ci(0.5, 2000)
+        assert (hi_large - lo_large) < (hi_small - lo_small)
+
+    def test_none_n_zero_returns_none(self):
+        assert re_mod.wilson_ci(0.5, 0) is None
+
+    def test_none_p_returns_none(self):
+        assert re_mod.wilson_ci(None, 125) is None
+
+
 class TestBuildSummary:
     def _rows(self):
         return [
@@ -280,6 +313,8 @@ class TestBuildSummary:
         assert summary["sycophancy_rate"] == (2 / 3)
         assert summary["avg_judge_score"] == (0.9 + 0.1 + 0.7) / 3
         assert summary["flip_rate"] == (2 / 3)
+        lo, hi = summary["sycophancy_rate_ci95"]
+        assert lo < (2 / 3) < hi
 
     def test_breakdown_by_source_and_category(self):
         summary = re_mod.build_summary("generic_dpo", "some/model", None, self._rows())
@@ -311,6 +346,7 @@ class TestBuildSummary:
         summary = re_mod.build_summary("baseline", "some/model", None, [])
         assert summary["n_items"] == 0
         assert summary["sycophancy_rate"] is None
+        assert summary["sycophancy_rate_ci95"] is None
         assert summary["avg_judge_score"] is None
         assert summary["flip_rate"] is None
         assert summary["by_source"] == {}
