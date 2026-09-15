@@ -22,3 +22,6 @@ outputs/*
 wandb/
 *.log
 /tmp.md
+
+# Development-only planning doc, not part of the published project
+/docs/NEXT_STEPS.md
