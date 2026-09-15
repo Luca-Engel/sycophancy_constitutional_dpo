@@ -2,9 +2,8 @@
 # Day-2 GPU-box run: trains both DPO conditions (generic_dpo and
 # constitutional_dpo), evaluates all three conditions (baseline +
 # both trained adapters) against the held-out eval set, then plots the
-# comparison. See docs/NEXT_STEPS.md for the full runbook this automates
-# (steps 7, 9, 10 -- the optional 2-GPU distributed-training demo, step 8,
-# is a separate one-off artifact and is NOT part of this script).
+# comparison (the optional 2-GPU distributed-training demo is a separate
+# one-off artifact and is NOT part of this script).
 #
 # Run this on the rented GPU pod, after (one-time, not scripted here since
 # it needs interactive key entry):
@@ -16,7 +15,7 @@
 #
 # Total wall time: training is well under an hour per condition; eval
 # across all three conditions is roughly 45-90 minutes on a single RTX
-# 4090 (docs/NEXT_STEPS.md's estimates). Budget ~2-4 hours total.
+# 4090. Budget ~2-4 hours total.
 #
 # Terminate the pod as soon as this finishes -- everything after (plotting
 # is already done here, but spot-checking transcripts and writing up

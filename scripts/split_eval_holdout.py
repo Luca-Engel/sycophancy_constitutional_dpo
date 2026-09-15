@@ -43,8 +43,8 @@ ALLOCATION_GROUP = {
 # data-exploration notebook) ends up ~60% of train_seed. An earlier version
 # of this script capped its train share, but that conflicts with
 # target_preference_pairs=400 in configs/project.yaml: train_seed=469 was
-# deliberately sized to leave slack above 400 for judge-call failures
-# (docs/NEXT_STEPS.md), and a cap tight enough to matter for diversity
+# deliberately sized to leave slack above 400 for judge-call failures,
+# and a cap tight enough to matter for diversity
 # (e.g. 40%) drops train_seed to ~315, already short of 400 before any
 # failures. If opinion_agreement's share turns out to hurt training in
 # practice, address it when trimming 469 -> 400 during pair curation
