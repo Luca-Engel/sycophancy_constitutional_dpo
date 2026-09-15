@@ -138,13 +138,13 @@ def main() -> None:
         "# Filtered DPO preference pairs: provenance",
         "",
         f"Filtered from `{in_dir_display}` by `scripts/filter_preference_pairs.py`.",
-        "Raw judged data is untouched; this is a separate, derived copy.",
+        "Raw judged data is untouched, this is a separate, derived copy.",
         "",
         "## Exclusions",
         "",
-        f"{len(EXCLUDED_IDS)} item(s) excluded from **both** files (union, so the two "
+        f"{len(EXCLUDED_IDS)} items excluded from **both** files (union, so the two "
         "conditions stay aligned on the same item pool) because their `chosen` "
-        "completion -- in at least one condition -- is a confirmed, manually-verified "
+        "completion, in at least one condition, is a confirmed, manually-verified "
         "catastrophic repetition loop rather than a real answer. See "
         "`scripts/filter_preference_pairs.py`'s module docstring for why this is a "
         "hardcoded, human-reviewed list rather than an automated filter.",

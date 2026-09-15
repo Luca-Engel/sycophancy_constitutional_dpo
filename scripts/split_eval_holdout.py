@@ -220,36 +220,32 @@ def build_manifest(
             "",
             (
                 "1. `scripts/fetch_sycophancy_data.py` gathers prompts from public "
-                "sycophancy-eval sources (anthropics/evals GitHub repo and the "
+                "sycophancy-eval sources (anthropics/evals GitHub repo, "
                 "meg-tong/sycophancy-eval Hugging Face mirror), normalizing every "
                 "row to `{id, source, prompt, category}`. Falls back to a small "
                 "bundled synthetic set only if every network source fails."
             ),
             (
                 "2. `scripts/split_eval_holdout.py` deduplicates by normalized "
-                "(lowercased, whitespace-collapsed) prompt text, then splits: "
-                "examples are grouped by category, shuffled within each category "
-                "using the configured seed, and given an equal round-robin eval "
-                "quota per allocation group (aqua_mc is grouped with "
-                "math_mc_cot so it isn't fully drained into eval; every other "
-                "category is its own group), so no single category dominates "
-                "the held-out set. Each group's quota is split back out across "
-                "its member categories proportional to their share of the "
-                "group's pool, so every category keeps its own label and a "
-                "deterministic presence on both sides. Everything left over "
-                "is shuffled and capped to form the train-seed pool."
+                "prompt text, groups examples by category, shuffles within each "
+                "category using the configured seed, and gives an equal "
+                "round-robin eval quota per allocation group (aqua_mc groups "
+                "with math_mc_cot so it isn't fully drained into eval, every "
+                "other category is its own group), so no category dominates "
+                "the held-out set. Each group's quota splits back across its "
+                "member categories proportional to their share of the pool, so "
+                "every category keeps a deterministic presence on both sides. "
+                "Everything left over forms the train-seed pool."
             ),
             (
-                "3. The eval holdout and train-seed pool are disjoint by "
-                "construction (each example is drawn from the same deduplicated "
-                "pool exactly once) and this is additionally asserted in code and "
-                "covered by tests."
+                "3. The two sets are disjoint by construction and this is "
+                "asserted in code and covered by tests."
             ),
             (
-                "4. `data/eval_holdout/eval_holdout.jsonl` is never touched again "
-                "until final evaluation. `data/train_seed/train_seed.jsonl` is the "
+                "4. `data/eval_holdout/eval_holdout.jsonl` stays untouched until "
+                "final evaluation. `data/train_seed/train_seed.jsonl` is the "
                 "pool later stages turn into pushback-injected training prompts "
-                "and, eventually, judge-labeled preference pairs."
+                "and judge-labeled preference pairs."
             ),
         ]
     )
