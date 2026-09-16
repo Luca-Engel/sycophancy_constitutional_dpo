@@ -9,7 +9,7 @@ metrics in the comparison plot.
 
 Evaluated on the full 125-item held-out eval set
 (`data/eval_holdout/eval_holdout.jsonl`), `Qwen/Qwen3-4B-Instruct-2507`,
-five conditions: the original three, plus a follow-up pair (`_v2`)
+five conditions: the original three, plus a follow-up pair (`_filtered`)
 trained on a filtered dataset with 46 items removed (45 caved
 "principled" candidates plus 1 confirmed repetition-loop artifact, see
 [`DEBUGGING.md`](DEBUGGING.md)):
@@ -19,8 +19,8 @@ trained on a filtered dataset with 46 items removed (45 caved
 | baseline | 125 | 54.4% | [45.7%, 62.9%] |
 | generic_dpo | 125 | 54.4% | [45.7%, 62.9%] |
 | constitutional_dpo | 125 | 55.2% | [46.5%, 63.6%] |
-| generic_dpo_v2 | 125 | 54.4% | [45.7%, 62.9%] |
-| constitutional_dpo_v2 | 125 | **50.4%** | [41.8%, 59.0%] |
+| generic_dpo_filtered | 125 | 54.4% | [45.7%, 62.9%] |
+| constitutional_dpo_filtered | 125 | **50.4%** | [41.8%, 59.0%] |
 
 The CI column is `sycophancy_rate_ci95` in each condition's
 `outputs/eval/<condition-name>/summary.json`, computed by
@@ -28,7 +28,7 @@ The CI column is `sycophancy_rate_ci95` in each condition's
 directly from that condition's `n_judged`/`sycophancy_rate` -- not a
 separate manual calculation.
 
-![Grouped bar chart comparing five training conditions (baseline, generic_dpo, constitutional_dpo, constitutional_dpo_v2, generic_dpo_v2) on two measures: sycophancy rate and average judge sycophancy score. All five conditions cluster tightly between about 0.50 and 0.55 on both measures, with constitutional_dpo_v2 visibly the lowest bar pair of the five.](comparison.png)
+![Grouped bar chart comparing five training conditions (baseline, generic_dpo, constitutional_dpo, constitutional_dpo_filtered, generic_dpo_filtered) on two measures: sycophancy rate and average judge sycophancy score. All five conditions cluster tightly between about 0.50 and 0.55 on both measures, with constitutional_dpo_filtered visibly the lowest bar pair of the five.](comparison.png)
 
 ## What the two bars mean
 
@@ -50,7 +50,7 @@ expected.
 
 ## Statistical significance
 
-**`constitutional_dpo_v2` has the lowest point estimate and is the only
+**`constitutional_dpo_filtered` has the lowest point estimate and is the only
 condition that beats baseline, but none of these differences are
 statistically distinguishable from noise at this sample size.** A paired
 bootstrap (5,000 resamples over the same 125 items) on the comparisons
@@ -58,9 +58,9 @@ that matter most:
 
 | Comparison | Observed diff | 95% CI | Significant at 95%? |
 |---|---|---|---|
-| constitutional_dpo_v2 − baseline | −4.0pp | [−12.8pp, +4.8pp] | No |
-| constitutional_dpo_v2 − constitutional_dpo (v1) | −4.8pp | [−14.4pp, +4.0pp] | No |
-| constitutional_dpo_v2 − generic_dpo_v2 | −4.0pp | [−13.6pp, +4.8pp] | No |
+| constitutional_dpo_filtered − baseline | −4.0pp | [−12.8pp, +4.8pp] | No |
+| constitutional_dpo_filtered − constitutional_dpo (unfiltered) | −4.8pp | [−14.4pp, +4.0pp] | No |
+| constitutional_dpo_filtered − generic_dpo_filtered | −4.0pp | [−13.6pp, +4.8pp] | No |
 | constitutional_dpo − baseline | +0.8pp | [−7.2pp, +8.8pp] | No |
 | generic_dpo − baseline | 0.0pp | [−9.6pp, +9.6pp] | No |
 

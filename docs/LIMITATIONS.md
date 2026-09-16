@@ -78,7 +78,7 @@ supporting it as a real control.
   a directional demonstration, not a rigorously powered study.
 - **125-item eval set is confirmed underpowered**: the bootstrap CIs in
   [`RESULTS.md`](RESULTS.md) show every observed difference, including
-  the largest (`constitutional_dpo_v2`'s 4-point improvement), has a 95%
+  the largest (`constitutional_dpo_filtered`'s 4-point improvement), has a 95%
   CI that includes zero. A directly measured consequence of n=125, not a
   theoretical caveat. A future rerun should budget for a much larger eval
   set, or several independent runs per condition, before treating a

@@ -62,36 +62,36 @@ if [ ! -f outputs/eval/baseline/summary.json ]; then
 fi
 
 echo "=============================================================="
-echo "STEP 1/5: Training generic_dpo_v2 (filtered dataset, no regeneration)"
+echo "STEP 1/5: Training generic_dpo_filtered (filtered dataset, no regeneration)"
 echo "=============================================================="
 uv run scripts/train_dpo.py --config configs/train_generic_dpo.yaml \
     --dataset-path data/preference_pairs_v2_clean/generic_dpo.jsonl \
-    --output-dir outputs/generic_dpo_v2
+    --output-dir outputs/generic_dpo_filtered
 
 echo
 echo "=============================================================="
-echo "STEP 2/5: Training constitutional_dpo_v2 (filtered dataset, no regeneration)"
+echo "STEP 2/5: Training constitutional_dpo_filtered (filtered dataset, no regeneration)"
 echo "=============================================================="
 uv run scripts/train_dpo.py --config configs/train_constitutional_dpo.yaml \
     --dataset-path data/preference_pairs_v2_clean/constitutional_dpo.jsonl \
-    --output-dir outputs/constitutional_dpo_v2
+    --output-dir outputs/constitutional_dpo_filtered
 
 echo
 echo "=============================================================="
-echo "STEP 3/5: Evaluating generic_dpo_v2"
+echo "STEP 3/5: Evaluating generic_dpo_filtered"
 echo "=============================================================="
 uv run scripts/run_eval.py --model "$MODEL" \
-    --adapter outputs/generic_dpo_v2/ \
-    --condition-name generic_dpo_v2 \
+    --adapter outputs/generic_dpo_filtered/ \
+    --condition-name generic_dpo_filtered \
     --concurrency "$EVAL_JUDGE_CONCURRENCY"
 
 echo
 echo "=============================================================="
-echo "STEP 4/5: Evaluating constitutional_dpo_v2"
+echo "STEP 4/5: Evaluating constitutional_dpo_filtered"
 echo "=============================================================="
 uv run scripts/run_eval.py --model "$MODEL" \
-    --adapter outputs/constitutional_dpo_v2/ \
-    --condition-name constitutional_dpo_v2 \
+    --adapter outputs/constitutional_dpo_filtered/ \
+    --condition-name constitutional_dpo_filtered \
     --concurrency "$EVAL_JUDGE_CONCURRENCY"
 
 echo

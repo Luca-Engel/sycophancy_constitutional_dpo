@@ -64,14 +64,44 @@ filtering the `answer_3` candidates at generation time, rejecting or
 regenerating cases where the "principled" completion caved despite the
 instruction, for a cleaner "hold firm when unwarranted" signal.
 
-## Follow-up: filtering without regeneration
+## Ablation: does filtering out caved `answer_3` candidates change the outcome?
 
-Built `scripts/verify_principled_candidates.py` to do exactly that:
-re-run each item's `answer_3` through the same judge-based sycophancy
-verdict `run_eval.py` already uses, and drop the item from both
-conditions symmetrically if it never holds firm (skips a rule-based
-flip heuristic on top, since the judge's own rubric already covers
-"changing its answer without a legitimate reason").
+The diagnosis above rests on one specific mechanism: noisy labels in
+the "principled" candidates. To test that claim instead of just
+asserting it, we ran a controlled ablation on the training data. Same
+generation pipeline, same training config, same eval set. The two arms
+branch right after `generate_candidates.py` and only differ in one
+step:
+
+- **raw**: `judge_rank.py` runs directly on all 469 generated
+  candidates, `answer_3` used as-is. `filter_preference_pairs.py` then
+  drops 3 confirmed repetition-loop items (see its docstring), leaving
+  466 pairs (`constitutional_dpo` / `generic_dpo` above).
+- **filtered**: `verify_principled_candidates.py` runs first and drops
+  candidates whose `answer_3` itself caved, before `judge_rank.py` and
+  `filter_preference_pairs.py` run on what's left, leaving 423 pairs
+  (`constitutional_dpo_filtered` / `generic_dpo_filtered` below).
+
+```mermaid
+flowchart TD
+    D[generate_candidates.py] -->|candidates.jsonl| E1[judge_rank.py]
+    E1 -->|"generic_dpo.jsonl,<br/>constitutional_dpo.jsonl<br/>(469 pairs)"| Filt1[filter_preference_pairs.py]
+    Filt1 -->|"preference_pairs_clean/<br/>466 pairs"| Train1[train_dpo.py]
+    Train1 --> R1["constitutional_dpo,<br/>generic_dpo"]
+
+    D -->|candidates.jsonl| V[verify_principled_candidates.py]
+    V -->|"candidates_verified.jsonl<br/>(drops 45 caved answer_3,<br/>424 left)"| E2[judge_rank.py]
+    E2 -->|"generic_dpo.jsonl,<br/>constitutional_dpo.jsonl<br/>(424 pairs)"| Filt2[filter_preference_pairs.py]
+    Filt2 -->|"preference_pairs_v2_clean/<br/>423 pairs"| Train2[train_dpo.py]
+    Train2 --> R2["constitutional_dpo_filtered,<br/>generic_dpo_filtered"]
+```
+
+`scripts/verify_principled_candidates.py` builds the filtered arm. It
+re-runs each item's `answer_3` through the same judge-based sycophancy
+verdict `run_eval.py` already uses, and drops the item from both
+conditions if it never holds firm. This also replaces a rule-based
+flip heuristic, since the judge's own rubric already covers "changing
+its answer without a legitimate reason."
 
 Result: **45 of 469 items (9.6%) had an `answer_3` the judge flagged as
 caved.** Contrary to expectation, this did **not** concentrate in
@@ -85,8 +115,8 @@ the original 469-item run. (Accounting: 469 minus 45 caved leaves 424,
 what `verify_principled_candidates.py` writes. `filter_preference_pairs.py`
 then drops one further repetition-loop item, leaving 423 trained on.)
 
-**Result: `constitutional_dpo_v2` (50.4%) is the only condition of the
-five that beats baseline, and `generic_dpo_v2` is unchanged from
+**Result: `constitutional_dpo_filtered` (50.4%) is the only condition of the
+five that beats baseline, and `generic_dpo_filtered` is unchanged from
 `generic_dpo` (54.4% either way)**: filtering helped the condition that
 depends on `answer_3` representing genuine principled behavior, and did
 nothing for the control. Consistent with the mechanism above, but two
@@ -94,16 +124,16 @@ things temper this:
 
 1. **The style-over-substance pattern didn't go away.** In
    `opinion_agreement`, 17/20 items are still flagged sycophantic under
-   `constitutional_dpo_v2` (vs 18/20 before), and 13/17 (76%) of those
+   `constitutional_dpo_filtered` (vs 18/20 before), and 13/17 (76%) of those
    still open with the same grateful-acknowledgment style before caving.
    Only 1 net item improved. The aggregate gain is real but isn't coming
    from fixing the diagnosed mechanism. The biggest category driver was
    `truthful_qa` (52.4% -> 33.3%), not `opinion_agreement`.
 2. **It isn't statistically significant.** The 95% CI on
-   `constitutional_dpo_v2 - baseline` is [-12.8pp, +4.8pp] (see
-   [`RESULTS.md`](RESULTS.md)), comfortably including zero. v1 and v2 are
-   also separate training runs, so some category-level movement
-   (`mmlu_mc_cot`, `trivia_qa` both getting worse) is plausibly
+   `constitutional_dpo_filtered - baseline` is [-12.8pp, +4.8pp] (see
+   [`RESULTS.md`](RESULTS.md)), comfortably including zero. The raw and
+   filtered arms are also separate training runs, so some category-level
+   movement (`mmlu_mc_cot`, `trivia_qa` both getting worse) is plausibly
    run-to-run variance rather than a pure filtering effect.
 
 **Honest bottom line**: filtering out confirmed-mislabeled examples is

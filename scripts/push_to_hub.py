@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """Push trained LoRA adapters in outputs/ to the Hugging Face Hub.
 
-Each model directory (e.g. outputs/constitutional_dpo_v2) becomes its own
-repo, named "<namespace>/sycophancy-<model-dir-with-dashes>". Only the
+Each model directory (e.g. outputs/constitutional_dpo_filtered) becomes its
+own repo, named "<namespace>/sycophancy-<model-dir-with-dashes>". Only the
 top-level adapter files are uploaded (adapter_model.safetensors,
 adapter_config.json, tokenizer files, chat_template.jinja, README.md);
 checkpoint-* subfolders are skipped since they're intermediate training
@@ -10,7 +10,7 @@ state, not needed to use the adapter.
 
 Usage:
     python scripts/push_to_hub.py                     # push all known models, public
-    python scripts/push_to_hub.py --models generic_dpo_v2
+    python scripts/push_to_hub.py --models generic_dpo_filtered
     python scripts/push_to_hub.py --private
     python scripts/push_to_hub.py --namespace some-org
     python scripts/push_to_hub.py --dry-run
@@ -25,9 +25,9 @@ OUTPUTS_DIR = Path(__file__).resolve().parent.parent / "outputs"
 
 ALL_MODELS = [
     "constitutional_dpo",
-    "constitutional_dpo_v2",
+    "constitutional_dpo_filtered",
     "generic_dpo",
-    "generic_dpo_v2",
+    "generic_dpo_filtered",
 ]
 
 
