@@ -129,7 +129,7 @@ randomization, and a 36.2% judge-agreement rate between rubrics). See
 
 ## Compute and budget
 
-Target: 20-50 CHF. LoRA/DPO training on a 3B model runs on a single
+Target: 20-50 CHF. LoRA/DPO training on a 4B model runs on a single
 rented consumer GPU (RTX 4090 / A6000, under an hour per condition), plus
 a short 2-GPU Accelerate + DeepSpeed ZeRO-2 run for a distributed-training
 artifact. Judge API calls (a few thousand Haiku calls) cost under $5.
